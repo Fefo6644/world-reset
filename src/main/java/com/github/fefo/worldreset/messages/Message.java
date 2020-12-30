@@ -32,10 +32,7 @@ public enum Message {
   PREFIX(text()
              .color(GRAY)
              .append(text('['))
-             .append(text()
-                         .color(GOLD)
-                         .decorate(BOLD)
-                         .append(text("WR")))
+             .append(text().append(text("WR", GOLD, BOLD)))
              .append(text(']'))),
 
   PLUGIN_INFO(text()
@@ -46,24 +43,19 @@ public enum Message {
                   .append(text(" - ", GRAY))
                   .append(text("v{0}"))),
 
-  NO_PERMISSION(prefixed()
-                    .color(RED)
-                    .append(text("You are not allowed to run this command"))),
+  NO_PERMISSION(prefixed().append(text("You are not allowed to run this command", RED))),
 
-  PLAYERS_ONLY(prefixed()
-                   .color(RED)
-                   .append(text("Only players can run this command"))),
+  PLAYERS_ONLY(prefixed().append(text("Only players can run this command", RED))),
 
-  SCHEDULED_SUCCESSFULLY(join(newline(),
-                              prefixed().append(text("World reset scheduled successfully", GRAY)),
-                              prefixed()
-                                  .color(GRAY)
-                                  .append(join(space(),
-                                               text("World"),
-                                               text("{0}", AQUA),
-                                               text("will reset every"),
-                                               text("{1}", GREEN)
-                                                   .hoverEvent(showText(text("{2}", WHITE))))))),
+  SCHEDULED_SUCCESSFULLY(prefixedLines(text("World reset scheduled successfully", GRAY),
+                                       text()
+                                           .color(GRAY)
+                                           .append(join(space(),
+                                                        text("World"),
+                                                        text("{0}", AQUA),
+                                                        text("will reset every"),
+                                                        text("{1}", GREEN)
+                                                            .hoverEvent(showText(text("{2}"))))))),
 
   UNSCHEDULED_SUCCESSFULLY(prefixed()
                                .color(GRAY)
@@ -86,18 +78,16 @@ public enum Message {
                                  text("{0}", AQUA),
                                  text("now!")))),
 
-  LIST_SCHEDULED_RESETS_TITLE(join(newline(),
-                                   prefixed().append(text("Worlds scheduled to reset:", WHITE)),
-                                   prefixed()
-                                       .color(GRAY)
-                                       .append(join(text(" - "),
-                                                    text("world"),
-                                                    text("next reset"),
-                                                    text("interval"))))),
+  LIST_SCHEDULED_RESETS_TITLE(prefixedLines(text("Worlds scheduled to reset:", WHITE),
+                                            text()
+                                                .color(GRAY)
+                                                .append(join(text(" - "),
+                                                             text("world"),
+                                                             text("next reset"),
+                                                             text("interval"))))),
 
   LIST_SCHEDULED_RESETS_ELEMENT(prefixed()
-                                    .color(GRAY)
-                                    .append(join(text(" - "),
+                                    .append(join(text(" - ", GRAY),
                                                  text("{0}", AQUA),
                                                  text("{1}", GREEN)
                                                      .hoverEvent(showText(text("{2}", WHITE))),
@@ -105,6 +95,9 @@ public enum Message {
                                                      .hoverEvent(showText(text("{4}", WHITE)))))),
 
   LIST_SCHEDULED_RESETS_NO_ELEMENT(prefixed().append(text("There are no scheduled resets", GRAY))),
+
+  ERROR_WHILE_SAVING(prefixedLines(text("There was an error while saving scheduled data", RED),
+                                   text("Please check console for any errors", RED))),
 
   USAGE_TITLE(prefixed().append(text("Usages:", WHITE))),
 
@@ -126,6 +119,10 @@ public enum Message {
 
   private static TextComponent.Builder prefixed() {
     return TextComponent.ofChildren(PREFIX.component, space().color(WHITE)).toBuilder();
+  }
+
+  private static TextComponent prefixedLines(final ComponentLike... components) {
+    return prefixed().append(join(newline().append(prefixed()), components)).build();
   }
 
   private static final Pattern INDEX_PATTERN = Pattern.compile("\\{(-1|\\d+)}");

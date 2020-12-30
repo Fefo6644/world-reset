@@ -13,7 +13,6 @@ public final class ScheduledReset implements Serializable {
   private final Instant resetInstant;
 
   public ScheduledReset(final Duration interval, final String worldName) {
-
     this.interval = interval;
     this.resetInstant = Instant.now().plus(interval);
     this.worldName = worldName;

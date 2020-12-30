@@ -17,8 +17,8 @@ kick-message: "&7Outer end islands are currently resetting. &oPlease wait a minu
 # s -> secs -> seconds
 # You can write either the short or long versions, so 1m = 1min = 1minute
 # You can also use decimal numbers: 1.5hs
-# You can also write "compound" durations: 0.8mo 1w 64secs
-# although the time scales have to decrease as you add them (e.g. you can't do 1mo 3ys, you have to 3ys 1mo)
+# You can also write "compound" durations: 0.8mo1w64secs (they cannot have spaces :()
+# although the time scales have to decrease as you add them (e.g. you can't do 1mo3ys, you have to 3ys1mo)
 # This will only be used if when running the '/worldreset prepare [<world>] [<interval>]' command an interval is not provided
 default-reset-interval: 1mo
 

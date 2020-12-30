@@ -33,6 +33,7 @@ import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Iterator;
@@ -43,6 +44,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static com.github.fefo.worldreset.commands.DurationArgumentType.duration;
@@ -54,15 +56,20 @@ public final class WorldResetCommand implements TabExecutor {
   private final WorldsDataHandler worldsDataHandler;
   private final YamlConfigAdapter configAdapter;
   private final SubjectFactory subjectFactory;
-  private final ExecutorService executorService = Executors.newFixedThreadPool(2);
+  private final ExecutorService asyncExecutor = Executors.newFixedThreadPool(5);
   private final CommandDispatcher<CommandSender> dispatcher = new CommandDispatcher<>();
   private final RootCommandNode<CommandSender> rootNode = this.dispatcher.getRoot();
+  private final Predicate<? super String> isScheduled;
 
   public WorldResetCommand(final WorldResetPlugin plugin) {
     this.plugin = plugin;
     this.configAdapter = plugin.getConfigAdapter();
     this.subjectFactory = plugin.getSubjectFactory();
     this.worldsDataHandler = plugin.getWorldsDataHandler();
+    this.isScheduled = world -> {
+      return this.worldsDataHandler.getScheduledResets().keySet().parallelStream()
+                                   .anyMatch(world::equals);
+    };
 
     final PluginCommand command = plugin.getCommand("worldreset");
     if (command == null) {
@@ -78,14 +85,14 @@ public final class WorldResetCommand implements TabExecutor {
         .then(literal("schedule")
                   .executes(this::scheduleDefault)
                   .then(argument("world", string())
-                            .suggests(this::suggestWorlds)
+                            .suggests(this::suggestUnscheduledWorlds)
                             .executes(this::scheduleWorld)
                             .then(argument("interval", duration(Duration.ofSeconds(10L)))
                                       .executes(this::scheduleWorldWithInterval))))
         .then(literal("unschedule")
                   .executes(this::unscheduleCurrent)
                   .then(argument("world", string())
-                            .suggests(this::suggestWorlds)
+                            .suggests(this::suggestScheduledWorlds)
                             .executes(this::unscheduleWorld)))
         .then(literal("now")
                   .then(argument("world", string())
@@ -101,8 +108,8 @@ public final class WorldResetCommand implements TabExecutor {
 
   public void shutdown() {
     try {
-      this.executorService.shutdown();
-      this.executorService.awaitTermination(15L, TimeUnit.SECONDS);
+      this.asyncExecutor.shutdown();
+      this.asyncExecutor.awaitTermination(15L, TimeUnit.SECONDS);
     } catch (final InterruptedException exception) {
       exception.printStackTrace();
     }
@@ -114,22 +121,23 @@ public final class WorldResetCommand implements TabExecutor {
     Message.LIST_SCHEDULED_RESETS_TITLE.send(subject);
 
     final Iterator<? extends ScheduledReset> iterator =
-        this.worldsDataHandler.getScheduledResets().iterator();
+        this.worldsDataHandler.getScheduledResets().values().iterator();
     if (!iterator.hasNext()) {
       Message.LIST_SCHEDULED_RESETS_NO_ELEMENT.send(subject);
       return 1;
     }
 
     final Instant now = Instant.now();
-    do {
+    while (iterator.hasNext()) {
       final ScheduledReset scheduledReset = iterator.next();
       Message.LIST_SCHEDULED_RESETS_ELEMENT.send(
           subject,
+          scheduledReset.getWorldName(),
           Utils.shortDuration(Duration.between(now, scheduledReset.getResetInstant())),
           Utils.longDuration(Duration.between(now, scheduledReset.getResetInstant())),
           Utils.shortDuration(scheduledReset.getInterval()),
           Utils.longDuration(scheduledReset.getInterval()));
-    } while (iterator.hasNext());
+    }
     return 1;
   }
 
@@ -144,6 +152,12 @@ public final class WorldResetCommand implements TabExecutor {
     Message.SCHEDULED_SUCCESSFULLY.send(subject, worldName,
                                         Utils.shortDuration(interval),
                                         Utils.longDuration(interval));
+    try {
+      this.worldsDataHandler.save();
+    } catch (final IOException exception) {
+      exception.printStackTrace();
+      Message.ERROR_WHILE_SAVING.send(subject);
+    }
   }
 
   private void unschedule(final String worldName, final MessagingSubject subject) {
@@ -152,8 +166,14 @@ public final class WorldResetCommand implements TabExecutor {
       return;
     }
 
-    if (this.worldsDataHandler.unschedule(worldName)) {
+    if (this.worldsDataHandler.unschedule(worldName) != null) {
       Message.UNSCHEDULED_SUCCESSFULLY.send(subject, worldName);
+      try {
+        this.worldsDataHandler.save();
+      } catch (final IOException exception) {
+        exception.printStackTrace();
+        Message.ERROR_WHILE_SAVING.send(subject);
+      }
     } else {
       Message.WASNT_SCHEDULED.send(subject, worldName);
     }
@@ -170,7 +190,14 @@ public final class WorldResetCommand implements TabExecutor {
     }
 
     Message.RESETTING_NOW.send(subject, worldName);
-    this.worldsDataHandler.resetNow(worldName);
+    if (this.worldsDataHandler.resetNow(worldName).join()) {
+      try {
+        this.worldsDataHandler.save();
+      } catch (final IOException exception) {
+        exception.printStackTrace();
+        Message.ERROR_WHILE_SAVING.send(subject);
+      }
+    }
     return 1;
   }
 
@@ -246,6 +273,25 @@ public final class WorldResetCommand implements TabExecutor {
     return builder.buildFuture();
   }
 
+  private CompletableFuture<Suggestions> suggestScheduledWorlds(
+      final CommandContext<CommandSender> context, final SuggestionsBuilder builder) {
+    final String current = builder.getRemaining().toLowerCase(Locale.ROOT);
+    this.worldsDataHandler.getScheduledResets().keySet().parallelStream().filter(world -> {
+      return world.toLowerCase(Locale.ROOT).startsWith(current);
+    }).forEach(builder::suggest);
+    return builder.buildFuture();
+  }
+
+  private CompletableFuture<Suggestions> suggestUnscheduledWorlds(
+      final CommandContext<CommandSender> context, final SuggestionsBuilder builder) {
+    final String current = builder.getRemaining().toLowerCase(Locale.ROOT);
+    Bukkit.getWorlds().parallelStream()
+          .map(World::getName).filter(this.isScheduled.negate()).filter(world -> {
+      return world.toLowerCase(Locale.ROOT).startsWith(current);
+    }).forEach(builder::suggest);
+    return builder.buildFuture();
+  }
+
   private void usages(final MessagingSubject subject, final CommandSender source) {
     Message.USAGE_TITLE.send(subject);
     for (final String usage : this.dispatcher.getAllUsage(this.rootNode, source, true)) {
@@ -258,7 +304,7 @@ public final class WorldResetCommand implements TabExecutor {
                            final @NotNull Command command,
                            final @NotNull String label,
                            final @NotNull String @NotNull [] args) {
-    this.executorService.submit(() -> {
+    this.asyncExecutor.submit(() -> {
       final String input = command.getLabel() + ' ' + String.join(" ", args);
       final ParseResults<CommandSender> results = this.dispatcher.parse(input.trim(), sender);
       final MessagingSubject subject = this.subjectFactory.from(sender);

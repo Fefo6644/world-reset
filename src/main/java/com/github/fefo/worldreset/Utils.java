@@ -6,29 +6,15 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.apache.commons.lang.Validate;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.Function;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import static java.time.temporal.ChronoUnit.DAYS;
-import static java.time.temporal.ChronoUnit.HOURS;
-import static java.time.temporal.ChronoUnit.MINUTES;
-import static java.time.temporal.ChronoUnit.MONTHS;
-import static java.time.temporal.ChronoUnit.SECONDS;
-import static java.time.temporal.ChronoUnit.WEEKS;
-import static java.time.temporal.ChronoUnit.YEARS;
 
 public final class Utils {
 
@@ -41,42 +27,12 @@ public final class Utils {
   private static final LegacyComponentSerializer LEGACY_SECTION =
       LegacyComponentSerializer.legacySection();
 
-  @Contract("null -> null; !null -> !null")
-  public static @Nullable String sanitize(final @Nullable String input) {
-    if (input == null) {
-      return null;
-    }
-
-    return input.toLowerCase(Locale.ROOT).trim();
-  }
-
   public static @NotNull String toLegacy(final @NotNull Component component) {
     return LEGACY_SECTION.serialize(component);
   }
 
   public static @NotNull Component fromLegacy(final @NotNull String message) {
     return LEGACY_AMPERSAND.deserialize(message);
-  }
-
-  public static <T> @NotNull List<? extends String> filterArgs(
-      final @NotNull Set<? extends T> options,
-      final @NotNull Function<? super T, ? extends String> toString,
-      final @NotNull String base) {
-    Validate.notNull(options);
-    Validate.notNull(toString);
-    Validate.notNull(base);
-
-    final String sanitized = sanitize(base);
-    final List<String> results = new ArrayList<>(options.size());
-
-    options.forEach(t -> {
-      final String string = toString.apply(t);
-      if (string.toLowerCase(Locale.ROOT).startsWith(sanitized)) {
-        results.add(string);
-      }
-    });
-
-    return results;
   }
 
   public static @NotNull String replaceAll(
@@ -107,15 +63,21 @@ public final class Utils {
     Validate.notNull(duration);
 
     final StringJoiner joiner = new StringJoiner("");
-    final long total = duration.getSeconds();
 
-    final long seconds = (total / seconds(SECONDS)) % ratio(MINUTES, SECONDS);
-    final long minutes = (total / seconds(MINUTES)) % ratio(HOURS, MINUTES);
-    final long hours = (total / seconds(HOURS)) % ratio(DAYS, HOURS);
-    final long days = (total / seconds(DAYS)) % ratio(WEEKS, DAYS);
-    final long weeks = (total / seconds(WEEKS)) % ratio(MONTHS, WEEKS);
-    final long months = (total / seconds(MONTHS)) % ratio(YEARS, MONTHS);
-    final long years = total / seconds(YEARS);
+    long years = duration.getSeconds();
+    long months = years % seconds(ChronoUnit.YEARS);
+    long weeks = months % seconds(ChronoUnit.MONTHS);
+    long days = weeks % seconds(ChronoUnit.WEEKS);
+    long hours = days % seconds(ChronoUnit.DAYS);
+    long minutes = hours % seconds(ChronoUnit.HOURS);
+    final long seconds = minutes % seconds(ChronoUnit.MINUTES);
+
+    years /= seconds(ChronoUnit.YEARS);
+    months /= seconds(ChronoUnit.MONTHS);
+    weeks /= seconds(ChronoUnit.WEEKS);
+    days /= seconds(ChronoUnit.DAYS);
+    hours /= seconds(ChronoUnit.HOURS);
+    minutes /= seconds(ChronoUnit.MINUTES);
 
     if (years != 0) {
       joiner.add(years + "y");
@@ -146,15 +108,21 @@ public final class Utils {
     Validate.notNull(duration);
 
     final StringJoiner joiner = new StringJoiner(", ");
-    final long total = duration.getSeconds();
 
-    final long seconds = (total / seconds(SECONDS)) % ratio(MINUTES, SECONDS);
-    final long minutes = (total / seconds(MINUTES)) % ratio(HOURS, MINUTES);
-    final long hours = (total / seconds(HOURS)) % ratio(DAYS, HOURS);
-    final long days = (total / seconds(DAYS)) % ratio(WEEKS, DAYS);
-    final long weeks = (total / seconds(WEEKS)) % ratio(MONTHS, WEEKS);
-    final long months = (total / seconds(MONTHS)) % ratio(YEARS, MONTHS);
-    final long years = total / seconds(YEARS);
+    long years = duration.getSeconds();
+    long months = years % seconds(ChronoUnit.YEARS);
+    long weeks = months % seconds(ChronoUnit.MONTHS);
+    long days = weeks % seconds(ChronoUnit.WEEKS);
+    long hours = days % seconds(ChronoUnit.DAYS);
+    long minutes = hours % seconds(ChronoUnit.HOURS);
+    final long seconds = minutes % seconds(ChronoUnit.MINUTES);
+
+    years /= seconds(ChronoUnit.YEARS);
+    months /= seconds(ChronoUnit.MONTHS);
+    weeks /= seconds(ChronoUnit.WEEKS);
+    days /= seconds(ChronoUnit.DAYS);
+    hours /= seconds(ChronoUnit.HOURS);
+    minutes /= seconds(ChronoUnit.MINUTES);
 
     if (years != 0) {
       joiner.add(years + " year" + (years > 1 ? "s" : ""));
@@ -183,10 +151,6 @@ public final class Utils {
 
   private static long seconds(final ChronoUnit chronoUnit) {
     return chronoUnit.getDuration().getSeconds();
-  }
-
-  private static long ratio(final ChronoUnit dividend, final ChronoUnit divisor) {
-    return seconds(dividend) / seconds(divisor);
   }
 
   private Utils() {

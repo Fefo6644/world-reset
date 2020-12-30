@@ -25,8 +25,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -41,8 +41,8 @@ import java.util.stream.Collectors;
 public final class WorldsDataHandler {
 
   private static final Gson GSON = new Gson();
-  private static final Type SCHEDULED_RESET_SET_TYPE =
-      TypeToken.getParameterized(Set.class, ScheduledReset.class).getType();
+  private static final Type SCHEDULED_RESET_MAP_TYPE =
+      TypeToken.getParameterized(Map.class, String.class, ScheduledReset.class).getType();
   private static final Predicate<? super Path> IS_INNER_REGION = path -> {
     return path.endsWith("r.0.0.mca") || path.endsWith("r.0.-1.mca")
            || path.endsWith("r.-1.0.mca") || path.endsWith("r.-1.-1.mca");
@@ -64,7 +64,8 @@ public final class WorldsDataHandler {
   private final Path worldsJson;
   private final Executor mainThread;
   private final Set<Duration> broadcastMoments = new HashSet<>();
-  private final Set<ScheduledReset> scheduledResets = Collections.synchronizedSet(new HashSet<>());
+  private final Map<String, ScheduledReset> scheduledResets =
+      Collections.synchronizedMap(new HashMap<>());
   private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
 
@@ -87,7 +88,7 @@ public final class WorldsDataHandler {
     }
 
     try (final Reader reader = Files.newBufferedReader(this.worldsJson, StandardCharsets.UTF_8)) {
-      this.scheduledResets.addAll(GSON.fromJson(reader, SCHEDULED_RESET_SET_TYPE));
+      this.scheduledResets.putAll(GSON.fromJson(reader, SCHEDULED_RESET_MAP_TYPE));
     }
 
     this.broadcastMoments.addAll(this.configAdapter.get(ConfigKeys.BROADCAST_PRIOR_RESET)
@@ -99,7 +100,7 @@ public final class WorldsDataHandler {
 
   public void save() throws IOException {
     try (final Writer writer = Files.newBufferedWriter(this.worldsJson, StandardCharsets.UTF_8)) {
-      GSON.toJson(this.scheduledResets, SCHEDULED_RESET_SET_TYPE, writer);
+      GSON.toJson(this.scheduledResets, SCHEDULED_RESET_MAP_TYPE, writer);
     }
   }
 
@@ -115,40 +116,27 @@ public final class WorldsDataHandler {
     }
   }
 
-  public Iterable<? extends ScheduledReset> getScheduledResets() {
-    return Collections.unmodifiableCollection(this.scheduledResets);
+  public Map<String, ? extends ScheduledReset> getScheduledResets() {
+    return new HashMap<>(this.scheduledResets);
   }
 
   public void schedule(final String worldName, final Duration interval) {
-    this.scheduledResets.remove(new ScheduledReset(Duration.ZERO, worldName));
-    this.scheduledResets.add(new ScheduledReset(interval, worldName));
-    try {
-      save();
-    } catch (final IOException exception) {
-      exception.printStackTrace();
-    }
+    this.scheduledResets.put(worldName, new ScheduledReset(interval, worldName));
   }
 
-  public boolean unschedule(final String worldName) {
-    final boolean result =
-        this.scheduledResets.remove(new ScheduledReset(Duration.ZERO, worldName));
-    try {
-      save();
-    } catch (final IOException exception) {
-      exception.printStackTrace();
-    }
-    return result;
+  public ScheduledReset unschedule(final String worldName) {
+    return this.scheduledResets.remove(worldName);
   }
 
-  public CompletableFuture<? super Void> resetNow(final String worldName) {
+  public CompletableFuture<Boolean> resetNow(final String worldName) {
     if (this.isShuttingDown.get()) {
-      return CompletableFuture.completedFuture(null);
+      return CompletableFuture.completedFuture(false);
     }
 
-    return CompletableFuture.runAsync(() -> {
+    return CompletableFuture.supplyAsync(() -> {
       World world = Bukkit.getWorld(worldName);
       if (world == null) {
-        return;
+        return false;
       }
 
       String kickMessageTemp = this.configAdapter.get(ConfigKeys.KICK_MESSAGE);
@@ -156,10 +144,7 @@ public final class WorldsDataHandler {
         return worldName;
       });
       final String kickMessage = Utils.toLegacy(Utils.fromLegacy(kickMessageTemp));
-
-      world.getPlayers().forEach(player -> {
-        player.kickPlayer(kickMessage);
-      });
+      world.getPlayers().forEach(player -> player.kickPlayer(kickMessage));
 
       final WorldCreator worldCreator = WorldCreator.name(worldName);
       worldCreator.copy(world);
@@ -184,6 +169,12 @@ public final class WorldsDataHandler {
       }
 
       worldCreator.createWorld();
+      final ScheduledReset previous = this.scheduledResets.get(worldName);
+      if (unschedule(worldName) != null) {
+        this.scheduledResets.put(worldName, new ScheduledReset(previous.getInterval(), worldName));
+      }
+
+      return previous != null;
     }, this.mainThread);
   }
 
@@ -192,19 +183,14 @@ public final class WorldsDataHandler {
       return;
     }
 
-    for (final Iterator<ScheduledReset> iterator = this.scheduledResets.iterator();
-         iterator.hasNext(); ) {
-      final ScheduledReset scheduledReset = iterator.next();
+    final AtomicBoolean shouldSave = new AtomicBoolean(false);
+    for (final ScheduledReset scheduledReset : getScheduledResets().values()) {
       if (scheduledReset.auditReset()) {
-        resetNow(scheduledReset.getWorldName()).join();
-        iterator.remove();
-        this.scheduledResets.add(new ScheduledReset(scheduledReset.getInterval(),
-                                                    scheduledReset.getWorldName()));
+          shouldSave.compareAndSet(false, resetNow(scheduledReset.getWorldName()).join());
         return;
       }
 
-      final Duration timeLeft =
-          Duration.between(Instant.now(), scheduledReset.getResetInstant());
+      final Duration timeLeft = Duration.between(Instant.now(), scheduledReset.getResetInstant());
       for (final Duration moment : this.broadcastMoments) {
         final long diff = Math.abs(timeLeft.getSeconds() - moment.getSeconds());
         if (diff < 4L) {
@@ -225,6 +211,14 @@ public final class WorldsDataHandler {
                              .sendMessage(Identity.nil(), Utils.fromLegacy(broadcastMessage));
           break;
         }
+      }
+    }
+
+    if (shouldSave.get()) {
+      try {
+        save();
+      } catch (final IOException exception) {
+        exception.printStackTrace();
       }
     }
   }

@@ -103,7 +103,7 @@ public final class DurationArgumentType implements ArgumentType<Duration> {
 
   @Override
   public Duration parse(final StringReader reader) throws CommandSyntaxException {
-    final String input = reader.readString().toLowerCase(Locale.ROOT);
+    final String input = reader.readUnquotedString().toLowerCase(Locale.ROOT);
     if (input.isEmpty()) {
       throw CommandSyntaxException.BUILT_IN_EXCEPTIONS.dispatcherUnknownArgument()
                                                       .createWithContext(reader);
@@ -145,17 +145,10 @@ public final class DurationArgumentType implements ArgumentType<Duration> {
   }
 
   @Override
-  public Collection<String> getExamples() {
-    return EXAMPLES;
-  }
-
-  @Override
   public <S> CompletableFuture<Suggestions> listSuggestions(final CommandContext<S> context,
                                                             final SuggestionsBuilder builder) {
     final String current = builder.getRemaining().toLowerCase(Locale.ROOT);
-    final boolean isQuoted = StringReader.isQuotedStringStart(current.charAt(0));
-    final String toMatch = (isQuoted ? current.substring(1) : current).replaceAll("\\s", "");
-    final Matcher matcher = DURATION_PATTERN.matcher(toMatch);
+    final Matcher matcher = DURATION_PATTERN.matcher(current);
 
     if (matcher.find()) {
       int nullGroups = 0;
@@ -174,7 +167,7 @@ public final class DurationArgumentType implements ArgumentType<Duration> {
       // 123 -> [y, mo, w, d, h, m, s]
       // 123ws4 -> [d, h, m, s]
       // 123ws4h56 -> [m, s]
-      // 123mo -> []
+      // 123mo -> [] (can't suggest random numbers, only suggest time scales)
       if (nullGroups % 2 == 1) {
         final int index = SCALES_SUGGESTIONS.indexOf(lastScale) + 1;
         for (int i = index; i < SCALES_SUGGESTIONS.size(); ++i) {
@@ -185,5 +178,10 @@ public final class DurationArgumentType implements ArgumentType<Duration> {
     }
 
     return Suggestions.empty();
+  }
+
+  @Override
+  public Collection<String> getExamples() {
+    return EXAMPLES;
   }
 }
