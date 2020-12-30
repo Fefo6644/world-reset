@@ -29,6 +29,10 @@ public final class SubjectFactory {
     this.audiences = BukkitAudiences.create(plugin);
   }
 
+  public void cleanup() {
+    this.subjectsCache.invalidateAll();
+  }
+
   public MessagingSubject from(final CommandSender sender) {
     return this.subjectsCache.getUnchecked(sender);
   }

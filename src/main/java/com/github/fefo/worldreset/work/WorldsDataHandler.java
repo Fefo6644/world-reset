@@ -108,6 +108,8 @@ public final class WorldsDataHandler {
       this.isShuttingDown.set(true);
       this.scheduler.shutdown();
       this.scheduler.awaitTermination(15L, TimeUnit.SECONDS);
+      this.scheduledResets.clear();
+      this.broadcastMoments.clear();
     } catch (final InterruptedException exception) {
       exception.printStackTrace();
     }

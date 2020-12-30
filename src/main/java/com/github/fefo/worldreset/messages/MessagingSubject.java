@@ -14,10 +14,9 @@ public final class MessagingSubject implements ForwardingAudience.Single, Identi
   private final Audience audience;
   private final String name;
 
-  public MessagingSubject(
-      final @NotNull Identity identity,
-      final @NotNull Audience audience,
-      final @NotNull String name) {
+  public MessagingSubject(final @NotNull Identity identity,
+                          final @NotNull Audience audience,
+                          final @NotNull String name) {
     this.identity = identity;
     this.audience = audience;
     this.name = name;

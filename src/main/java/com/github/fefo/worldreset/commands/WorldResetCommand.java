@@ -113,8 +113,8 @@ public final class WorldResetCommand implements TabExecutor {
     final MessagingSubject subject = this.subjectFactory.from(source);
     Message.LIST_SCHEDULED_RESETS_TITLE.send(subject);
 
-    final Iterator<? extends ScheduledReset> iterator = this.worldsDataHandler.getScheduledResets()
-                                                                              .iterator();
+    final Iterator<? extends ScheduledReset> iterator =
+        this.worldsDataHandler.getScheduledResets().iterator();
     if (!iterator.hasNext()) {
       Message.LIST_SCHEDULED_RESETS_NO_ELEMENT.send(subject);
       return 1;

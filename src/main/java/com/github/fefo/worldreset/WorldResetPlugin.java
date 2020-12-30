@@ -53,12 +53,14 @@ public final class WorldResetPlugin extends JavaPlugin {
   @Override
   public void onDisable() {
     this.worldResetCommand.shutdown();
-    this.worldsDataHandler.shutdown();
 
     try {
       this.worldsDataHandler.save();
     } catch (final IOException exception) {
       exception.printStackTrace();
+    } finally {
+      this.worldsDataHandler.shutdown();
+      this.subjectFactory.cleanup();
     }
   }
 
