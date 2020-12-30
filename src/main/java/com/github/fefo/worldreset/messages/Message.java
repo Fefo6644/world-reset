@@ -45,7 +45,7 @@ public enum Message {
 
   NO_PERMISSION(prefixed().append(text("You are not allowed to run this command", RED))),
 
-  PLAYERS_ONLY(prefixed().append(text("Only players can run this command", RED))),
+  CONSOLE_INCOMPLETE_COMMAND(prefixed().append(text("Please provide a world from console", RED))),
 
   SCHEDULED_SUCCESSFULLY(prefixedLines(text("World reset scheduled successfully", GRAY),
                                        text()

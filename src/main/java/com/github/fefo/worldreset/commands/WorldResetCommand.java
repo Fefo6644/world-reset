@@ -210,7 +210,7 @@ public final class WorldResetCommand implements TabExecutor {
       return 1;
     }
 
-    Message.PLAYERS_ONLY.send(subject);
+    Message.CONSOLE_INCOMPLETE_COMMAND.send(subject);
     return 0;
   }
 
@@ -233,7 +233,7 @@ public final class WorldResetCommand implements TabExecutor {
       return 1;
     }
 
-    Message.PLAYERS_ONLY.send(subject);
+    Message.CONSOLE_INCOMPLETE_COMMAND.send(subject);
     return 0;
   }
 
