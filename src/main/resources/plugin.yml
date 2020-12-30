@@ -1,0 +1,27 @@
+{
+  "name": "WorldReset",
+  "main": "com.github.fefo.worldreset.WorldResetPlugin",
+  "version": "${pluginVersion}",
+  "api-version": "1.13",
+  "load": "POSTWORLD",
+  "authors": [
+    "Fefo"
+  ],
+
+  "permissions": {
+    "worldreset.receivebroadcast": {
+      "default": true
+    },
+    "worldreset.command": {
+      "default": "op"
+    }
+  },
+
+  "commands": {
+    "worldreset": {
+      "permission": "worldreset.command",
+      "description": "General administration command for world resetting",
+      "usage": "/worldreset help"
+    }
+  }
+}

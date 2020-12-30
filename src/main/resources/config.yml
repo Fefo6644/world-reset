@@ -1,0 +1,37 @@
+# You can use RGB color codes like so &#rrggbb :)
+# There are also 3 placeholders:
+# {time-left}: The time left until next reset ('1m5d14h')
+# {time-left-long}: Same but as a longer "description" ('1 month, 5 days, 14 hours')
+# {world}: The name of the world resetting/to be reset
+broadcast-message: "&7Outer end islands will be reset in &a{time-left}"
+# kick-message has no placeholders other than '{world}' ;'(
+kick-message: "&7Outer end islands are currently resetting. &oPlease wait a minute before rejoining!"
+
+# The time duration that will pass between regions deletion.
+# y -> ys -> years
+# mo -> mos -> months
+# w -> ws -> weeks
+# d -> ds -> days
+# h -> hs -> hours
+# m -> mins -> minutes
+# s -> secs -> seconds
+# You can write either the short or long versions, so 1m = 1min = 1minute
+# You can also use decimal numbers: 1.5hs
+# You can also write "compound" durations: 0.8mo 1w 64secs
+# although the time scales have to decrease as you add them (e.g. you can't do 1mo 3ys, you have to 3ys 1mo)
+# This will only be used if when running the '/worldreset prepare [<world>] [<interval>]' command an interval is not provided
+default-reset-interval: 1mo
+
+broadcast-prior-reset:
+  - 24hs
+  - 12hs
+  - 6hs
+  - 3hs
+  - 2hs
+  - 1hs
+  - 30min
+  - 15min
+  - 10min
+  - 5min
+  - 1min
+  - 30s
