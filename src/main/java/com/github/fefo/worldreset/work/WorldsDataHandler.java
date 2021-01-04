@@ -1,10 +1,12 @@
 package com.github.fefo.worldreset.work;
 
-import com.github.fefo.worldreset.Utils;
 import com.github.fefo.worldreset.WorldResetPlugin;
 import com.github.fefo.worldreset.config.ConfigKeys;
 import com.github.fefo.worldreset.config.YamlConfigAdapter;
 import com.github.fefo.worldreset.messages.SubjectFactory;
+import com.github.fefo.worldreset.util.Pair;
+import com.github.fefo.worldreset.util.Utils;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import net.kyori.adventure.identity.Identity;
@@ -30,6 +32,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -62,12 +65,17 @@ public final class WorldsDataHandler {
   private final SubjectFactory subjectFactory;
   private final YamlConfigAdapter configAdapter;
   private final Path worldsJson;
-  private final Executor mainThread;
+
   private final Set<Duration> broadcastMoments = new HashSet<>();
-  private final Map<String, ScheduledReset> scheduledResets =
-      Collections.synchronizedMap(new HashMap<>());
-  private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+  private final Map<String, ScheduledReset> scheduledResets = new ConcurrentHashMap<>();
+
+  private final Executor mainThread;
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
+  private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
+      new ThreadFactoryBuilder().setPriority(Thread.NORM_PRIORITY)
+                                .setDaemon(false)
+                                .setNameFormat("worldreset-worker-pool-thread-%d")
+                                .build());
 
   public WorldsDataHandler(final WorldResetPlugin plugin) {
     this.plugin = plugin;
@@ -134,9 +142,9 @@ public final class WorldsDataHandler {
     }
 
     return CompletableFuture.supplyAsync(() -> {
-      World world = Bukkit.getWorld(worldName);
+      final World world = Bukkit.getWorld(worldName);
       if (world == null) {
-        return false;
+        throw new IllegalStateException("Unknown world " + worldName);
       }
 
       String kickMessageTemp = this.configAdapter.get(ConfigKeys.KICK_MESSAGE);
@@ -146,28 +154,33 @@ public final class WorldsDataHandler {
       final String kickMessage = Utils.toLegacy(Utils.fromLegacy(kickMessageTemp));
       world.getPlayers().forEach(player -> player.kickPlayer(kickMessage));
 
+      final Path worldFolder =
+          world.getWorldFolder().toPath().resolve(DIMENSION_FOLDERS.get(world.getEnvironment()));
+
       final WorldCreator worldCreator = WorldCreator.name(worldName);
       worldCreator.copy(world);
-      final Path regionFolder = world.getWorldFolder().toPath()
-                                     .resolve(DIMENSION_FOLDERS.get(world.getEnvironment()))
-                                     .resolve("region");
       Bukkit.unloadWorld(world, true);
-      world = null; // memory management :^)
 
-      try (final DirectoryStream<Path> directoryStream = Files.newDirectoryStream(regionFolder)) {
-        for (final Path region : directoryStream) {
-          if (IS_OUTER_REGION.test(region)) {
-            try {
-              Files.delete(region);
-            } catch (final IOException exception) {
-              exception.printStackTrace();
-            }
-          }
-        }
-      } catch (final IOException exception) {
-        exception.printStackTrace();
+      return Pair.of(worldFolder, worldCreator);
+
+    }, this.mainThread).handleAsync((pair, throwable) -> {
+      if (throwable != null) {
+        throw new RuntimeException(throwable);
       }
 
+      // delete files async
+      deleteRegionsInFolder(pair.getFirst().resolve("region"));
+      deleteRegionsInFolder(pair.getFirst().resolve("poi"));
+      deleteRegionsInFolder(pair.getFirst().resolve("entities")); // prepare for 1.17 owo
+
+      return pair.getSecond();
+
+    }, this.scheduler).handleAsync((worldCreator, throwable) -> {
+      if (throwable != null) {
+        return false;
+      }
+
+      // re-load world sync
       worldCreator.createWorld();
       final ScheduledReset previous = this.scheduledResets.get(worldName);
       if (unschedule(worldName) != null) {
@@ -186,7 +199,7 @@ public final class WorldsDataHandler {
     final AtomicBoolean shouldSave = new AtomicBoolean(false);
     for (final ScheduledReset scheduledReset : getScheduledResets().values()) {
       if (scheduledReset.auditReset()) {
-          shouldSave.compareAndSet(false, resetNow(scheduledReset.getWorldName()).join());
+        shouldSave.compareAndSet(false, resetNow(scheduledReset.getWorldName()).join());
         return;
       }
 
@@ -220,6 +233,26 @@ public final class WorldsDataHandler {
       } catch (final IOException exception) {
         exception.printStackTrace();
       }
+    }
+  }
+
+  private void deleteRegionsInFolder(final Path folder) {
+    if (Files.notExists(folder)) {
+      return;
+    }
+
+    try (final DirectoryStream<Path> directoryStream = Files.newDirectoryStream(folder)) {
+      for (final Path region : directoryStream) {
+        if (IS_OUTER_REGION.test(region)) {
+          try {
+            Files.delete(region);
+          } catch (final IOException exception) {
+            exception.printStackTrace();
+          }
+        }
+      }
+    } catch (final IOException exception) {
+      exception.printStackTrace();
     }
   }
 }

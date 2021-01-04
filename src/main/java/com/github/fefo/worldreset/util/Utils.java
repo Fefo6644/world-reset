@@ -1,4 +1,4 @@
-package com.github.fefo.worldreset;
+package com.github.fefo.worldreset.util;
 
 import com.github.fefo.worldreset.commands.DurationArgumentType;
 import com.mojang.brigadier.StringReader;

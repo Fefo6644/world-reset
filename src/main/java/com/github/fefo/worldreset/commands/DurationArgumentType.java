@@ -1,6 +1,6 @@
 package com.github.fefo.worldreset.commands;
 
-import com.github.fefo.worldreset.Utils;
+import com.github.fefo.worldreset.util.Utils;
 import com.mojang.brigadier.LiteralMessage;
 import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.arguments.ArgumentType;

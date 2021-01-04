@@ -1,20 +1,16 @@
 package com.github.fefo.worldreset.messages;
 
-import com.github.fefo.worldreset.Utils;
 import net.kyori.adventure.audience.Audience;
-import net.kyori.adventure.identity.Identity;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.ComponentLike;
 import net.kyori.adventure.text.TextComponent;
-import net.kyori.adventure.text.TextReplacementConfig;
-import net.kyori.adventure.text.event.ClickEvent;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import org.jetbrains.annotations.NotNull;
+import org.bukkit.plugin.Plugin;
 
-import java.util.regex.Pattern;
+import java.time.Duration;
 
+import static com.github.fefo.worldreset.util.Utils.longDuration;
+import static com.github.fefo.worldreset.util.Utils.shortDuration;
 import static net.kyori.adventure.text.Component.join;
-import static net.kyori.adventure.text.Component.newline;
 import static net.kyori.adventure.text.Component.space;
 import static net.kyori.adventure.text.Component.text;
 import static net.kyori.adventure.text.event.ClickEvent.suggestCommand;
@@ -27,143 +23,214 @@ import static net.kyori.adventure.text.format.NamedTextColor.RED;
 import static net.kyori.adventure.text.format.NamedTextColor.WHITE;
 import static net.kyori.adventure.text.format.NamedTextColor.YELLOW;
 import static net.kyori.adventure.text.format.TextDecoration.BOLD;
+import static net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection;
 
-public enum Message {
-  PREFIX(text()
-             .color(GRAY)
-             .append(text('['))
-             .append(text().append(text("WR", GOLD, BOLD)))
-             .append(text(']'))),
+public interface Message {
 
-  PLUGIN_INFO(text()
-                  .color(YELLOW)
-                  .append(text("WorldReset", GOLD))
-                  .append(space())
-                  .append(text("by Fefo"))
-                  .append(text(" - ", GRAY))
-                  .append(text("v{0}"))),
+  Component PREFIX =
+      text()
+          .color(GRAY)
+          .append(text('['),
+                  text("WR", GOLD, BOLD),
+                  text(']'))
+          .build();
 
-  NO_PERMISSION(prefixed().append(text("You are not allowed to run this command", RED))),
+  Args1<Plugin> PLUGIN_INFO = plugin ->
+      text()
+          .color(YELLOW)
+          .append(text("WorldReset", GOLD),
+                  space(),
+                  text("by Fefo"),
+                  text(" - ", GRAY),
+                  text('v'),
+                  text(plugin.getDescription().getVersion()));
 
-  CONSOLE_INCOMPLETE_COMMAND(prefixed().append(text("Please provide a world from console", RED))),
+  Args0 NO_PERMISSION = () ->
+      prefixed()
+          .append(text("You are not allowed to run this command", RED));
 
-  SCHEDULED_SUCCESSFULLY(prefixedLines(text("World reset scheduled successfully", GRAY),
-                                       text()
-                                           .color(GRAY)
-                                           .append(join(space(),
-                                                        text("World"),
-                                                        text("{0}", AQUA),
-                                                        text("will reset every"),
-                                                        text("{1}", GREEN)
-                                                            .hoverEvent(showText(text("{2}"))))))),
+  Args0 CONSOLE_INCOMPLETE_COMMAND = () ->
+      prefixed()
+          .append(text("Please provide a world from console", RED));
 
-  UNSCHEDULED_SUCCESSFULLY(prefixed()
-                               .color(GRAY)
-                               .append(join(space(),
-                                            text("World"),
-                                            text("{0}", AQUA),
-                                            text("has been unscheduled for reset")))),
-
-  WASNT_SCHEDULED(prefixed()
-                      .color(GRAY)
+  Args2<String, Duration> SCHEDULED_SUCCESSFULLY = (world, interval) ->
+      prefixed()
+          .color(GRAY)
+          .append(text("World reset scheduled successfully"),
+                  text()
                       .append(join(space(),
                                    text("World"),
-                                   text("{0}", AQUA),
-                                   text("was not scheduled")))),
+                                   text(world, AQUA),
+                                   text("will reset every"),
+                                   text(shortDuration(interval), GREEN)
+                                       .hoverEvent(showText(text(longDuration(interval)))))));
 
-  RESETTING_NOW(prefixed()
-                    .color(GRAY)
-                    .append(join(space(),
-                                 text("Resetting"),
-                                 text("{0}", AQUA),
-                                 text("now!")))),
+  Args1<String> UNSCHEDULED_SUCCESSFULLY = world ->
+      prefixed()
+          .color(GRAY)
+          .append(join(space(),
+                       text("World"),
+                       text(world, AQUA),
+                       text("has been unscheduled for reset")));
 
-  LIST_SCHEDULED_RESETS_TITLE(prefixedLines(text("Worlds scheduled to reset:", WHITE),
-                                            text()
-                                                .color(GRAY)
-                                                .append(join(text(" - "),
-                                                             text("world"),
-                                                             text("next reset"),
-                                                             text("interval"))))),
+  Args1<String> WASNT_SCHEDULED = world ->
+      prefixed()
+          .color(GRAY)
+          .append(join(space(),
+                       text("World"),
+                       text(world, AQUA),
+                       text("was not scheduled")));
 
-  LIST_SCHEDULED_RESETS_ELEMENT(prefixed()
-                                    .append(join(text(" - ", GRAY),
-                                                 text("{0}", AQUA),
-                                                 text("{1}", GREEN)
-                                                     .hoverEvent(showText(text("{2}", WHITE))),
-                                                 text("{3}", GREEN)
-                                                     .hoverEvent(showText(text("{4}", WHITE)))))),
+  Args1<String> RESETTING_NOW = world ->
+      prefixed()
+          .color(GRAY)
+          .append(join(space(),
+                       text("Resetting"),
+                       text(world, AQUA),
+                       text("now!")));
 
-  LIST_SCHEDULED_RESETS_NO_ELEMENT(prefixed().append(text("There are no scheduled resets", GRAY))),
+  Args0 LIST_SCHEDULED_RESETS_TITLE = () ->
+      prefixed()
+          .append(text("Worlds scheduled to reset:", WHITE),
+                  text()
+                      .color(GRAY)
+                      .append(join(text(" - "),
+                                   text("world"),
+                                   text("next reset"),
+                                   text("interval"))));
 
-  ERROR_WHILE_SAVING(prefixedLines(text("There was an error while saving scheduled data", RED),
-                                   text("Please check console for any errors", RED))),
+  Args3<String, Duration, Duration> LIST_SCHEDULED_RESETS_ELEMENT = (world, until, interval) ->
+      prefixed()
+          .append(join(text(" - ", GRAY),
+                       text(world, AQUA),
+                       text(shortDuration(until), GREEN)
+                           .hoverEvent(showText(text(longDuration(until), WHITE))),
+                       text(shortDuration(interval), GREEN)
+                           .hoverEvent(showText(text(longDuration(interval), WHITE)))));
 
-  USAGE_TITLE(prefixed().append(text("Usages:", WHITE))),
+  Args0 LIST_SCHEDULED_RESETS_NO_ELEMENT = () ->
+      prefixed()
+          .append(text("There are no scheduled resets", GRAY));
 
-  USAGES_COMMAND(text()
-                     .append(text("/{0}", RED))
-                     .hoverEvent(showText(text()
-                                              .append(text("Click to run: ", WHITE))
-                                              .append(text("/{0}", GRAY))))
-                     .clickEvent(suggestCommand("/{0}"))),
+  Args0 ERROR_WHILE_SAVING = () ->
+      prefixed()
+          .color(RED)
+          .append(text("There was an error while saving scheduled data"),
+                  text("Please check console for any errors"));
 
-  UNKNOWN_WORLD(prefixed()
-                    .color(RED)
-                    .append(join(space(),
-                                 text("No world for name"),
-                                 text("{0}", AQUA),
-                                 text("was found")))),
+  Args0 USAGE_TITLE = () ->
+      prefixed()
+          .append(text("Usage(s):", WHITE));
 
-  COMMAND_ERROR(prefixed().append(text("{0}", RED)));
+  Args1<String> USAGES_COMMAND = usage ->
+      text()
+          .color(RED)
+          .append(text('/'),
+                  text(usage))
+          .hoverEvent(showText(text()
+                                   .append(text("Click to run: ", WHITE),
+                                           text('/', GRAY),
+                                           text(usage, GRAY))))
+          .clickEvent(suggestCommand('/' + usage));
 
-  private static TextComponent.Builder prefixed() {
-    return TextComponent.ofChildren(PREFIX.component, space().color(WHITE)).toBuilder();
+  Args1<String> UNKNOWN_WORLD = unknownWorld ->
+      prefixed()
+          .color(RED)
+          .append(join(space(),
+                       text("No world for name"),
+                       text(unknownWorld, AQUA),
+                       text("was found")));
+
+  Args1<String> COMMAND_ERROR = error ->
+      prefixed()
+          .append(text(error, RED));
+
+  static TextComponent.Builder prefixed() {
+    return TextComponent.ofChildren(PREFIX, space()).toBuilder().resetStyle();
   }
 
-  private static TextComponent prefixedLines(final ComponentLike... components) {
-    return prefixed().append(join(newline().append(prefixed()), components)).build();
-  }
+  @FunctionalInterface
+  interface Args0 {
 
-  private static final Pattern INDEX_PATTERN = Pattern.compile("\\{(-1|\\d+)}");
-
-  private final Component component;
-
-  Message(final ComponentLike componentLike) {
-    this.component = componentLike.asComponent();
-  }
-
-  public String legacy() {
-    return LegacyComponentSerializer.legacySection().serialize(this.component);
-  }
-
-  public void send(final @NotNull MessagingSubject subject,
-                   final @NotNull String @NotNull ... replacements) {
-    subject.sendMessage(Identity.nil(), replaceWith(subject.getName(), replacements));
-  }
-
-  public void send(final @NotNull Audience audience,
-                   final @NotNull String @NotNull ... replacements) {
-    audience.sendMessage(Identity.nil(), replaceWith("INVALID", replacements));
-  }
-
-  private Component replaceWith(final String name, final String... replacements) {
-    Component replaced = this.component.replaceText(
-        TextReplacementConfig.builder().match(INDEX_PATTERN).replacement((matchResult, builder) -> {
-          final int index = Integer.parseInt(matchResult.group(1));
-          builder.content(index == -1 ? name : replacements[index]);
-          return builder;
-        }).build());
-
-    final ClickEvent click = replaced.clickEvent();
-    if (click != null) {
-      final String newValue = Utils.replaceAll(INDEX_PATTERN, click.value(), matchResult -> {
-        final int index = Integer.parseInt(matchResult.group(1));
-        return index == -1 ? name : replacements[index];
-      });
-      replaced = replaced.clickEvent(suggestCommand(newValue));
+    default void sendMessage(final Audience audience) {
+      audience.sendMessage(build());
     }
 
-    return replaced;
+    default String legacy() {
+      return legacySection().serialize(build().asComponent());
+    }
+
+    ComponentLike build();
+  }
+
+  @FunctionalInterface
+  interface Args1<T> {
+
+    default void sendMessage(final Audience audience, final T t) {
+      audience.sendMessage(build(t));
+    }
+
+    default String legacy(final T t) {
+      return legacySection().serialize(build(t).asComponent());
+    }
+
+    ComponentLike build(T t);
+  }
+
+  @FunctionalInterface
+  interface Args2<T, S> {
+
+    default void sendMessage(final Audience audience, final T t, final S s) {
+      audience.sendMessage(build(t, s));
+    }
+
+    default String legacy(final T t, final S s) {
+      return legacySection().serialize(build(t, s).asComponent());
+    }
+
+    ComponentLike build(T t, S s);
+  }
+
+  @FunctionalInterface
+  interface Args3<T, S, R> {
+
+    default void sendMessage(final Audience audience, final T t, final S s, final R r) {
+      audience.sendMessage(build(t, s, r));
+    }
+
+    default String legacy(final T t, final S s, final R r) {
+      return legacySection().serialize(build(t, s, r).asComponent());
+    }
+
+    ComponentLike build(T t, S s, R r);
+  }
+
+  @FunctionalInterface
+  interface Args4<T, S, R, Q> {
+
+    default void sendMessage(final Audience audience, final T t, final S s, final R r, final Q q) {
+      audience.sendMessage(build(t, s, r, q));
+    }
+
+    default String legacy(final T t, final S s, final R r, final Q q) {
+      return legacySection().serialize(build(t, s, r, q).asComponent());
+    }
+
+    ComponentLike build(T t, S s, R r, Q q);
+  }
+
+  @FunctionalInterface
+  interface Args5<T, S, R, Q, P> {
+
+    default void sendMessage(
+        final Audience audience, final T t, final S s, final R r, final Q q, final P p) {
+      audience.sendMessage(build(t, s, r, q, p));
+    }
+
+    default String legacy(final T t, final S s, final R r, final Q q, final P p) {
+      return legacySection().serialize(build(t, s, r, q, p).asComponent());
+    }
+
+    ComponentLike build(T t, S s, R r, Q q, P p);
   }
 }

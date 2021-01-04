@@ -1,6 +1,5 @@
 package com.github.fefo.worldreset.commands;
 
-import com.github.fefo.worldreset.Utils;
 import com.github.fefo.worldreset.WorldResetPlugin;
 import com.github.fefo.worldreset.config.ConfigKeys;
 import com.github.fefo.worldreset.config.YamlConfigAdapter;
@@ -10,6 +9,7 @@ import com.github.fefo.worldreset.messages.SubjectFactory;
 import com.github.fefo.worldreset.work.ScheduledReset;
 import com.github.fefo.worldreset.work.WorldsDataHandler;
 import com.google.common.collect.Iterables;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
 import com.mojang.brigadier.arguments.ArgumentType;
@@ -17,7 +17,6 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.context.ParsedCommandNode;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestion;
 import com.mojang.brigadier.suggestion.Suggestions;
@@ -30,7 +29,6 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabExecutor;
-import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -56,9 +54,15 @@ public final class WorldResetCommand implements TabExecutor {
   private final WorldsDataHandler worldsDataHandler;
   private final YamlConfigAdapter configAdapter;
   private final SubjectFactory subjectFactory;
-  private final ExecutorService asyncExecutor = Executors.newFixedThreadPool(5);
-  private final CommandDispatcher<CommandSender> dispatcher = new CommandDispatcher<>();
-  private final RootCommandNode<CommandSender> rootNode = this.dispatcher.getRoot();
+
+  private final ExecutorService asyncExecutor = Executors.newFixedThreadPool(
+      5, new ThreadFactoryBuilder().setPriority(Thread.NORM_PRIORITY)
+                                   .setDaemon(false)
+                                   .setNameFormat("worldreset-command-pool-thread-%d")
+                                   .build());
+
+  private final CommandDispatcher<MessagingSubject> dispatcher = new CommandDispatcher<>();
+  private final RootCommandNode<MessagingSubject> rootNode = this.dispatcher.getRoot();
   private final Predicate<? super String> isScheduled;
 
   public WorldResetCommand(final WorldResetPlugin plugin) {
@@ -79,9 +83,9 @@ public final class WorldResetCommand implements TabExecutor {
     command.setExecutor(this);
     command.setPermissionMessage(Message.NO_PERMISSION.legacy());
 
-    final LiteralArgumentBuilder<CommandSender> builder = literal(command.getLabel());
+    final LiteralArgumentBuilder<MessagingSubject> builder = literal(command.getLabel());
     builder
-        .requires(sender -> sender.hasPermission("worldreset.command"))
+        .requires(subject -> subject.hasPermission("worldreset.command"))
         .then(literal("schedule")
                   .executes(this::scheduleDefault)
                   .then(argument("world", string())
@@ -115,28 +119,24 @@ public final class WorldResetCommand implements TabExecutor {
     }
   }
 
-  private int list(final CommandContext<CommandSender> context) {
-    final CommandSender source = context.getSource();
-    final MessagingSubject subject = this.subjectFactory.from(source);
-    Message.LIST_SCHEDULED_RESETS_TITLE.send(subject);
+  private int list(final CommandContext<MessagingSubject> context) {
+    final MessagingSubject subject = context.getSource();
+    Message.LIST_SCHEDULED_RESETS_TITLE.sendMessage(subject);
 
     final Iterator<? extends ScheduledReset> iterator =
         this.worldsDataHandler.getScheduledResets().values().iterator();
     if (!iterator.hasNext()) {
-      Message.LIST_SCHEDULED_RESETS_NO_ELEMENT.send(subject);
+      Message.LIST_SCHEDULED_RESETS_NO_ELEMENT.sendMessage(subject);
       return 1;
     }
 
     final Instant now = Instant.now();
     while (iterator.hasNext()) {
       final ScheduledReset scheduledReset = iterator.next();
-      Message.LIST_SCHEDULED_RESETS_ELEMENT.send(
-          subject,
-          scheduledReset.getWorldName(),
-          Utils.shortDuration(Duration.between(now, scheduledReset.getResetInstant())),
-          Utils.longDuration(Duration.between(now, scheduledReset.getResetInstant())),
-          Utils.shortDuration(scheduledReset.getInterval()),
-          Utils.longDuration(scheduledReset.getInterval()));
+      Message.LIST_SCHEDULED_RESETS_ELEMENT.sendMessage(
+          subject, scheduledReset.getWorldName(),
+          Duration.between(now, scheduledReset.getResetInstant()),
+          scheduledReset.getInterval());
     }
     return 1;
   }
@@ -144,102 +144,93 @@ public final class WorldResetCommand implements TabExecutor {
   private void schedule(final String worldName, final Duration interval,
                         final MessagingSubject subject) {
     if (Bukkit.getWorld(worldName) == null) {
-      Message.UNKNOWN_WORLD.send(subject, worldName);
+      Message.UNKNOWN_WORLD.sendMessage(subject, worldName);
       return;
     }
 
     this.worldsDataHandler.schedule(worldName, interval);
-    Message.SCHEDULED_SUCCESSFULLY.send(subject, worldName,
-                                        Utils.shortDuration(interval),
-                                        Utils.longDuration(interval));
+    Message.SCHEDULED_SUCCESSFULLY.sendMessage(subject, worldName, interval);
     try {
       this.worldsDataHandler.save();
     } catch (final IOException exception) {
       exception.printStackTrace();
-      Message.ERROR_WHILE_SAVING.send(subject);
+      Message.ERROR_WHILE_SAVING.sendMessage(subject);
     }
   }
 
   private void unschedule(final String worldName, final MessagingSubject subject) {
     if (Bukkit.getWorld(worldName) == null) {
-      Message.UNKNOWN_WORLD.send(subject, worldName);
+      Message.UNKNOWN_WORLD.sendMessage(subject, worldName);
       return;
     }
 
     if (this.worldsDataHandler.unschedule(worldName) != null) {
-      Message.UNSCHEDULED_SUCCESSFULLY.send(subject, worldName);
+      Message.UNSCHEDULED_SUCCESSFULLY.sendMessage(subject, worldName);
       try {
         this.worldsDataHandler.save();
       } catch (final IOException exception) {
         exception.printStackTrace();
-        Message.ERROR_WHILE_SAVING.send(subject);
+        Message.ERROR_WHILE_SAVING.sendMessage(subject);
       }
     } else {
-      Message.WASNT_SCHEDULED.send(subject, worldName);
+      Message.WASNT_SCHEDULED.sendMessage(subject, worldName);
     }
   }
 
-  private int resetNow(final CommandContext<CommandSender> context) {
-    final CommandSender source = context.getSource();
-    final MessagingSubject subject = this.subjectFactory.from(source);
+  private int resetNow(final CommandContext<MessagingSubject> context) {
+    final MessagingSubject subject = context.getSource();
 
     final String worldName = StringArgumentType.getString(context, "world");
     if (Bukkit.getWorld(worldName) == null) {
-      Message.UNKNOWN_WORLD.send(subject, worldName);
+      Message.UNKNOWN_WORLD.sendMessage(subject, worldName);
       return 0;
     }
 
-    Message.RESETTING_NOW.send(subject, worldName);
+    Message.RESETTING_NOW.sendMessage(subject, worldName);
     if (this.worldsDataHandler.resetNow(worldName).join()) {
       try {
         this.worldsDataHandler.save();
       } catch (final IOException exception) {
         exception.printStackTrace();
-        Message.ERROR_WHILE_SAVING.send(subject);
+        Message.ERROR_WHILE_SAVING.sendMessage(subject);
       }
     }
     return 1;
   }
 
-  private int unscheduleCurrent(final CommandContext<CommandSender> context) {
-    final CommandSender source = context.getSource();
-    final MessagingSubject subject = this.subjectFactory.from(source);
-    if (source instanceof Player) {
-      final World world = ((Player) source).getWorld();
-      unschedule(world.getName(), subject);
+  private int unscheduleCurrent(final CommandContext<MessagingSubject> context) {
+    final MessagingSubject subject = context.getSource();
+    if (subject.existsInWorld()) {
+      unschedule(subject.getWorld().getName(), subject);
       return 1;
     }
 
-    Message.CONSOLE_INCOMPLETE_COMMAND.send(subject);
+    Message.CONSOLE_INCOMPLETE_COMMAND.sendMessage(subject);
     return 0;
   }
 
-  private int unscheduleWorld(final CommandContext<CommandSender> context) {
-    final CommandSender source = context.getSource();
-    final MessagingSubject subject = this.subjectFactory.from(source);
+  private int unscheduleWorld(final CommandContext<MessagingSubject> context) {
+    final MessagingSubject subject = context.getSource();
 
     final String worldName = StringArgumentType.getString(context, "world");
     unschedule(worldName, subject);
     return 1;
   }
 
-  private int scheduleDefault(final CommandContext<CommandSender> context) {
-    final CommandSender source = context.getSource();
-    final MessagingSubject subject = this.subjectFactory.from(source);
-    if (source instanceof Player) {
+  private int scheduleDefault(final CommandContext<MessagingSubject> context) {
+    final MessagingSubject subject = context.getSource();
+    if (subject.existsInWorld()) {
       final Duration interval = this.configAdapter.get(ConfigKeys.DEFAULT_RESET_INTERVAL);
-      final World world = ((Player) source).getWorld();
-      schedule(world.getName(), interval, subject);
+      schedule(subject.getWorld().getName(), interval, subject);
       return 1;
     }
 
-    Message.CONSOLE_INCOMPLETE_COMMAND.send(subject);
+    Message.CONSOLE_INCOMPLETE_COMMAND.sendMessage(subject);
     return 0;
   }
 
-  private int scheduleWorld(final CommandContext<CommandSender> context) {
-    final CommandSender source = context.getSource();
-    final MessagingSubject subject = this.subjectFactory.from(source);
+  private int scheduleWorld(final CommandContext<MessagingSubject> context) {
+    final MessagingSubject subject = context.getSource();
 
     final String worldName = StringArgumentType.getString(context, "world");
     final Duration interval = this.configAdapter.get(ConfigKeys.DEFAULT_RESET_INTERVAL);
@@ -247,9 +238,8 @@ public final class WorldResetCommand implements TabExecutor {
     return 1;
   }
 
-  private int scheduleWorldWithInterval(final CommandContext<CommandSender> context) {
-    final CommandSender source = context.getSource();
-    final MessagingSubject subject = this.subjectFactory.from(source);
+  private int scheduleWorldWithInterval(final CommandContext<MessagingSubject> context) {
+    final MessagingSubject subject = context.getSource();
 
     final String worldName = StringArgumentType.getString(context, "world");
     final Duration interval = DurationArgumentType.getDuration(context, "interval");
@@ -257,15 +247,15 @@ public final class WorldResetCommand implements TabExecutor {
     return 1;
   }
 
-  private int help(final CommandContext<CommandSender> context) {
-    final MessagingSubject subject = this.subjectFactory.from(context.getSource());
-    Message.PLUGIN_INFO.send(subject, this.plugin.getDescription().getVersion());
-    usages(subject, context.getSource());
+  private int help(final CommandContext<MessagingSubject> context) {
+    final MessagingSubject subject = context.getSource();
+    Message.PLUGIN_INFO.sendMessage(subject, this.plugin);
+    usages(subject);
     return 1;
   }
 
-  private CompletableFuture<Suggestions> suggestWorlds(final CommandContext<CommandSender> context,
-                                                       final SuggestionsBuilder builder) {
+  private CompletableFuture<Suggestions> suggestWorlds(
+      final CommandContext<MessagingSubject> context, final SuggestionsBuilder builder) {
     final String current = builder.getRemaining().toLowerCase(Locale.ROOT);
     Bukkit.getWorlds().parallelStream().map(World::getName).filter(world -> {
       return world.toLowerCase(Locale.ROOT).startsWith(current);
@@ -274,7 +264,7 @@ public final class WorldResetCommand implements TabExecutor {
   }
 
   private CompletableFuture<Suggestions> suggestScheduledWorlds(
-      final CommandContext<CommandSender> context, final SuggestionsBuilder builder) {
+      final CommandContext<MessagingSubject> context, final SuggestionsBuilder builder) {
     final String current = builder.getRemaining().toLowerCase(Locale.ROOT);
     this.worldsDataHandler.getScheduledResets().keySet().parallelStream().filter(world -> {
       return world.toLowerCase(Locale.ROOT).startsWith(current);
@@ -283,7 +273,7 @@ public final class WorldResetCommand implements TabExecutor {
   }
 
   private CompletableFuture<Suggestions> suggestUnscheduledWorlds(
-      final CommandContext<CommandSender> context, final SuggestionsBuilder builder) {
+      final CommandContext<MessagingSubject> context, final SuggestionsBuilder builder) {
     final String current = builder.getRemaining().toLowerCase(Locale.ROOT);
     Bukkit.getWorlds().parallelStream()
           .map(World::getName).filter(this.isScheduled.negate()).filter(world -> {
@@ -292,10 +282,10 @@ public final class WorldResetCommand implements TabExecutor {
     return builder.buildFuture();
   }
 
-  private void usages(final MessagingSubject subject, final CommandSender source) {
-    Message.USAGE_TITLE.send(subject);
-    for (final String usage : this.dispatcher.getAllUsage(this.rootNode, source, true)) {
-      Message.USAGES_COMMAND.send(subject, usage);
+  private void usages(final MessagingSubject subject) {
+    Message.USAGE_TITLE.sendMessage(subject);
+    for (final String usage : this.dispatcher.getAllUsage(this.rootNode, subject, true)) {
+      Message.USAGES_COMMAND.sendMessage(subject, usage);
     }
   }
 
@@ -306,20 +296,19 @@ public final class WorldResetCommand implements TabExecutor {
                            final @NotNull String @NotNull [] args) {
     this.asyncExecutor.submit(() -> {
       final String input = command.getLabel() + ' ' + String.join(" ", args);
-      final ParseResults<CommandSender> results = this.dispatcher.parse(input.trim(), sender);
       final MessagingSubject subject = this.subjectFactory.from(sender);
+      final ParseResults<MessagingSubject> results = this.dispatcher.parse(input.trim(), subject);
 
-      final ParsedCommandNode<CommandSender> last =
-          Iterables.getLast(results.getContext().getNodes());
-      if (!last.getNode().canUse(sender)) {
-        Message.NO_PERMISSION.send(subject);
+      if (!Iterables.getLast(results.getContext().getNodes()).getNode().canUse(subject)) {
+        Message.NO_PERMISSION.sendMessage(subject);
         return;
       }
 
-      final Map<CommandNode<CommandSender>, CommandSyntaxException> map = results.getExceptions();
+      final Map<CommandNode<MessagingSubject>, CommandSyntaxException> map =
+          results.getExceptions();
       if (!map.isEmpty()) {
         map.values().forEach(exception -> {
-          Message.COMMAND_ERROR.send(subject, exception.getMessage());
+          Message.COMMAND_ERROR.sendMessage(subject, exception.getMessage());
         });
         return;
       }
@@ -327,7 +316,7 @@ public final class WorldResetCommand implements TabExecutor {
       try {
         this.dispatcher.execute(results);
       } catch (final CommandSyntaxException exception) {
-        usages(subject, sender);
+        usages(subject);
       }
     });
 
@@ -340,17 +329,18 @@ public final class WorldResetCommand implements TabExecutor {
                                              final @NotNull String alias,
                                              final @NotNull String @NotNull [] args) {
     final String input = command.getLabel() + ' ' + String.join(" ", args);
-    return this.dispatcher.getCompletionSuggestions(this.dispatcher.parse(input, sender)).join()
+    final MessagingSubject subject = this.subjectFactory.from(sender);
+    return this.dispatcher.getCompletionSuggestions(this.dispatcher.parse(input, subject)).join()
                           .getList().parallelStream().map(Suggestion::getText)
                           .collect(Collectors.toList());
   }
 
-  private LiteralArgumentBuilder<CommandSender> literal(final String name) {
+  private LiteralArgumentBuilder<MessagingSubject> literal(final String name) {
     return LiteralArgumentBuilder.literal(name);
   }
 
-  private <T> RequiredArgumentBuilder<CommandSender, T> argument(final String name,
-                                                                 final ArgumentType<T> type) {
+  private <T> RequiredArgumentBuilder<MessagingSubject, T> argument(final String name,
+                                                                    final ArgumentType<T> type) {
     return RequiredArgumentBuilder.argument(name, type);
   }
 }

@@ -6,11 +6,13 @@ import com.google.common.cache.LoadingCache;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.identity.Identity;
 import net.kyori.adventure.platform.bukkit.BukkitAudiences;
+import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 public final class SubjectFactory {
 
@@ -21,7 +23,8 @@ public final class SubjectFactory {
                   .expireAfterAccess(5, TimeUnit.MINUTES)
                   .build(CacheLoader.from(sender -> {
                     return new MessagingSubject(identityFrom(sender), audienceFrom(sender),
-                                                nameFrom(sender));
+                                                nameFrom(sender), sender::hasPermission,
+                                                worldSupplierFrom(sender));
                   }));
   private final BukkitAudiences audiences;
 
@@ -60,5 +63,12 @@ public final class SubjectFactory {
       return "INVALID";
     }
     return sender.getName();
+  }
+
+  private Supplier<? extends World> worldSupplierFrom(final CommandSender sender) {
+    if (!(sender instanceof Player)) {
+      return null;
+    }
+    return ((Player) sender)::getWorld;
   }
 }
