@@ -115,7 +115,8 @@ public interface Message {
   Args0 ERROR_WHILE_SAVING = () ->
       prefixed()
           .color(RED)
-          .append(text("There was an error while saving scheduled data"),
+          .append(text("There was an error while saving scheduled data."),
+                  space(),
                   text("Please check console for any errors"));
 
   Args0 USAGE_TITLE = () ->
