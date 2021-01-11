@@ -10,16 +10,20 @@ public final class ScheduledReset implements Serializable {
 
   private final String worldName;
   private final Duration interval;
-  private final Instant resetInstant;
+  private final Instant nextReset;
 
   public ScheduledReset(final Duration interval, final String worldName) {
-    this.interval = interval;
-    this.resetInstant = Instant.now().plus(interval);
+    this(interval, Instant.now(), worldName);
+  }
+
+  public ScheduledReset(final Duration interval, final Instant from, final String worldName) {
     this.worldName = worldName;
+    this.interval = interval;
+    this.nextReset = from.plus(interval);
   }
 
   public boolean auditReset() {
-    return this.resetInstant.isBefore(Instant.now());
+    return this.nextReset.isBefore(Instant.now());
   }
 
   public String getWorldName() {
@@ -30,8 +34,8 @@ public final class ScheduledReset implements Serializable {
     return this.interval;
   }
 
-  public Instant getResetInstant() {
-    return this.resetInstant;
+  public Instant getNextReset() {
+    return this.nextReset;
   }
 
   @Override

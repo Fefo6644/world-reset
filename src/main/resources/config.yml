@@ -1,11 +1,9 @@
 # You can use RGB color codes like so &#rrggbb :)
 # There are also 3 placeholders:
-# {time-left}: The time left until next reset ('1m5d14h')
+# {time-left}: The time left until next reset ('1m5d14h') (will also be 'the next restart' if the scheduled date had just passed)
 # {time-left-long}: Same but as a longer "description" ('1 month, 5 days, 14 hours')
 # {world}: The name of the world resetting/to be reset
 broadcast-message: "&7Outer end islands will be reset in &a{time-left}"
-# kick-message has no placeholders other than '{world}' ;'(
-kick-message: "&7Outer end islands are currently resetting. &oPlease wait a minute before rejoining!"
 
 # The time duration that will pass between regions deletion.
 # y -> ys -> years

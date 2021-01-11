@@ -20,12 +20,6 @@ public final class ConfigKeys {
                           "&7Outer end islands will be reset in &a{time-left}",
                           true);
 
-  public static final ConfigKey<String> KICK_MESSAGE =
-      new StringConfigKey("kick-message",
-                          "&7Outer end islands are currently resetting. " +
-                          "&oPlease wait a minute before rejoining!",
-                          true);
-
   public static final ConfigKey<List<String>> BROADCAST_PRIOR_RESET =
       new ListConfigKey<>("broadcast-prior-reset",
                           Collections.unmodifiableList(Arrays.asList(

@@ -4,15 +4,12 @@ import com.github.fefo.worldreset.WorldResetPlugin;
 import com.github.fefo.worldreset.config.ConfigKeys;
 import com.github.fefo.worldreset.config.YamlConfigAdapter;
 import com.github.fefo.worldreset.messages.SubjectFactory;
-import com.github.fefo.worldreset.util.Pair;
 import com.github.fefo.worldreset.util.Utils;
+import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import net.kyori.adventure.identity.Identity;
 import org.bukkit.Bukkit;
-import org.bukkit.World;
-import org.bukkit.WorldCreator;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,46 +17,42 @@ import java.io.Reader;
 import java.io.Writer;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Collections;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.MatchResult;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public final class WorldsDataHandler {
 
   private static final Gson GSON = new Gson();
   private static final Type SCHEDULED_RESET_MAP_TYPE =
       TypeToken.getParameterized(Map.class, String.class, ScheduledReset.class).getType();
-  private static final Predicate<? super Path> IS_INNER_REGION = path -> {
+  private static final Path WORLDS_FOLDER = Bukkit.getWorldContainer().toPath();
+
+  private static final PathMatcher REGION_FILE_MATCHER =
+      FileSystems.getDefault().getPathMatcher("regex:r(?:\\.-?\\d){2}\\.mca");
+  private static final Predicate<Path> IS_INNER_REGION = path -> {
     return path.endsWith("r.0.0.mca") || path.endsWith("r.0.-1.mca")
            || path.endsWith("r.-1.0.mca") || path.endsWith("r.-1.-1.mca");
   };
-  private static final Predicate<? super Path> IS_OUTER_REGION = IS_INNER_REGION.negate();
-  private static final Map<? super World.Environment, ? extends String> DIMENSION_FOLDERS;
-
-  static {
-    final Map<? super World.Environment, String> map = new EnumMap<>(World.Environment.class);
-    map.put(World.Environment.NORMAL, ".");
-    map.put(World.Environment.NETHER, "DIM-1");
-    map.put(World.Environment.THE_END, "DIM1");
-    DIMENSION_FOLDERS = Collections.unmodifiableMap(map);
-  }
+  private static final Predicate<Path> IS_OUTER_REGION =
+      IS_INNER_REGION.negate().and(path -> REGION_FILE_MATCHER.matches(Iterables.getLast(path)));
 
   private final WorldResetPlugin plugin;
   private final SubjectFactory subjectFactory;
@@ -69,7 +62,6 @@ public final class WorldsDataHandler {
   private final Set<Duration> broadcastMoments = new HashSet<>();
   private final Map<String, ScheduledReset> scheduledResets = new ConcurrentHashMap<>();
 
-  private final Executor mainThread;
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
   private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
       new ThreadFactoryBuilder().setPriority(Thread.NORM_PRIORITY)
@@ -79,7 +71,6 @@ public final class WorldsDataHandler {
 
   public WorldsDataHandler(final WorldResetPlugin plugin) {
     this.plugin = plugin;
-    this.mainThread = task -> Bukkit.getScheduler().runTask(this.plugin, task);
     this.subjectFactory = plugin.getSubjectFactory();
     this.configAdapter = plugin.getConfigAdapter();
     this.worldsJson = plugin.getDataFolder().toPath().resolve("worlds.json");
@@ -106,6 +97,23 @@ public final class WorldsDataHandler {
     this.scheduler.scheduleAtFixedRate(this::auditResets, 5L, 5L, TimeUnit.SECONDS);
   }
 
+  public void deleteAny() {
+    final Instant now = Instant.now();
+    getScheduledResets().values().parallelStream()
+                        .filter(ScheduledReset::auditReset).forEach(reset -> {
+      deleteRegionsRecursively(WORLDS_FOLDER.resolve(reset.getWorldName()));
+
+      Instant nextResetFrom = reset.getNextReset();
+      while (nextResetFrom.plus(reset.getInterval()).isBefore(now)) {
+        nextResetFrom = nextResetFrom.plus(reset.getInterval());
+      }
+
+      this.scheduledResets.put(reset.getWorldName(),
+                               new ScheduledReset(reset.getInterval(), nextResetFrom,
+                                                  reset.getWorldName()));
+    });
+  }
+
   public void save() throws IOException {
     try (final Writer writer = Files.newBufferedWriter(this.worldsJson, StandardCharsets.UTF_8)) {
       GSON.toJson(this.scheduledResets, SCHEDULED_RESET_MAP_TYPE, writer);
@@ -124,71 +132,19 @@ public final class WorldsDataHandler {
     }
   }
 
-  public Map<String, ? extends ScheduledReset> getScheduledResets() {
+  public Map<String, ScheduledReset> getScheduledResets() {
     return new HashMap<>(this.scheduledResets);
   }
 
-  public void schedule(final String worldName, final Duration interval) {
-    this.scheduledResets.put(worldName, new ScheduledReset(interval, worldName));
+  public WorldOperationResult schedule(final String worldName, final Duration interval) {
+    final ScheduledReset previous =
+        this.scheduledResets.put(worldName, new ScheduledReset(interval, worldName));
+    return previous == null ? WorldOperationResult.SUCCESS_OTHER
+                            : WorldOperationResult.SUCCESS_RESCHEDULED;
   }
 
   public ScheduledReset unschedule(final String worldName) {
     return this.scheduledResets.remove(worldName);
-  }
-
-  public CompletableFuture<Boolean> resetNow(final String worldName) {
-    if (this.isShuttingDown.get()) {
-      return CompletableFuture.completedFuture(false);
-    }
-
-    return CompletableFuture.supplyAsync(() -> {
-      final World world = Bukkit.getWorld(worldName);
-      if (world == null) {
-        throw new IllegalStateException("Unknown world " + worldName);
-      }
-
-      String kickMessageTemp = this.configAdapter.get(ConfigKeys.KICK_MESSAGE);
-      kickMessageTemp = Utils.replaceAll(Utils.WORLD_NAME_PATTERN, kickMessageTemp, matchResult -> {
-        return worldName;
-      });
-      final String kickMessage = Utils.toLegacy(Utils.fromLegacy(kickMessageTemp));
-      world.getPlayers().forEach(player -> player.kickPlayer(kickMessage));
-
-      final Path worldFolder =
-          world.getWorldFolder().toPath().resolve(DIMENSION_FOLDERS.get(world.getEnvironment()));
-
-      final WorldCreator worldCreator = WorldCreator.name(worldName);
-      worldCreator.copy(world);
-      Bukkit.unloadWorld(world, true);
-
-      return Pair.of(worldFolder, worldCreator);
-
-    }, this.mainThread).handleAsync((pair, throwable) -> {
-      if (throwable != null) {
-        throw new RuntimeException(throwable);
-      }
-
-      // delete files async
-      deleteRegionsInFolder(pair.getFirst().resolve("region"));
-      deleteRegionsInFolder(pair.getFirst().resolve("poi"));
-      deleteRegionsInFolder(pair.getFirst().resolve("entities")); // prepare for 1.17 owo
-
-      return pair.getSecond();
-
-    }, this.scheduler).handleAsync((worldCreator, throwable) -> {
-      if (throwable != null) {
-        return false;
-      }
-
-      // re-load world sync
-      worldCreator.createWorld();
-      final ScheduledReset previous = this.scheduledResets.get(worldName);
-      if (unschedule(worldName) != null) {
-        this.scheduledResets.put(worldName, new ScheduledReset(previous.getInterval(), worldName));
-      }
-
-      return previous != null;
-    }, this.mainThread);
   }
 
   public void auditResets() {
@@ -196,61 +152,54 @@ public final class WorldsDataHandler {
       return;
     }
 
-    final AtomicBoolean shouldSave = new AtomicBoolean(false);
     for (final ScheduledReset scheduledReset : getScheduledResets().values()) {
       if (scheduledReset.auditReset()) {
-        shouldSave.compareAndSet(false, resetNow(scheduledReset.getWorldName()).join());
-        return;
+        continue;
       }
 
-      final Duration timeLeft = Duration.between(Instant.now(), scheduledReset.getResetInstant());
+      final Duration timeLeft = Duration.between(Instant.now(), scheduledReset.getNextReset());
+      if (timeLeft.getSeconds() < 5L) {
+        broadcast(result -> "the next restart",
+                  result -> "the next restart",
+                  result -> scheduledReset.getWorldName());
+      }
+
       for (final Duration moment : this.broadcastMoments) {
         final long diff = Math.abs(timeLeft.getSeconds() - moment.getSeconds());
-        if (diff < 4L) {
-          String broadcastMessage = this.configAdapter.get(ConfigKeys.BROADCAST_MESSAGE);
-          broadcastMessage =
-              Utils.replaceAll(Utils.TIME_LEFT_PATTERN, broadcastMessage, matchResult -> {
-                return Utils.shortDuration(timeLeft);
-              });
-          broadcastMessage =
-              Utils.replaceAll(Utils.TIME_LEFT_LONG_PATTERN, broadcastMessage, matchResult -> {
-                return Utils.longDuration(timeLeft);
-              });
-          broadcastMessage =
-              Utils.replaceAll(Utils.WORLD_NAME_PATTERN, broadcastMessage, matchResult -> {
-                return scheduledReset.getWorldName();
-              });
-          this.subjectFactory.permission("worldreset.receivebroadcast")
-                             .sendMessage(Identity.nil(), Utils.fromLegacy(broadcastMessage));
+        if (diff < 3L) {
+          broadcast(result -> Utils.shortDuration(timeLeft),
+                    result -> Utils.longDuration(timeLeft),
+                    result -> scheduledReset.getWorldName());
           break;
         }
       }
     }
-
-    if (shouldSave.get()) {
-      try {
-        save();
-      } catch (final IOException exception) {
-        exception.printStackTrace();
-      }
-    }
   }
 
-  private void deleteRegionsInFolder(final Path folder) {
-    if (Files.notExists(folder)) {
+  private void broadcast(final Function<? super MatchResult, ? extends String> timeLeftShort,
+                         final Function<? super MatchResult, ? extends String> timeLeftLong,
+                         final Function<? super MatchResult, ? extends String> world) {
+    String message = this.configAdapter.get(ConfigKeys.BROADCAST_MESSAGE);
+    message = Utils.replaceAll(Utils.TIME_LEFT_PATTERN, message, timeLeftShort);
+    message = Utils.replaceAll(Utils.TIME_LEFT_LONG_PATTERN, message, timeLeftLong);
+    message = Utils.replaceAll(Utils.WORLD_NAME_PATTERN, message, world);
+    this.subjectFactory.permission("worldreset.receivebroadcast")
+                       .sendMessage(Utils.fromLegacy(message));
+  }
+
+  private void deleteRegionsRecursively(final Path folder) {
+    if (Files.notExists(folder) || !Files.isDirectory(folder)) {
       return;
     }
 
-    try (final DirectoryStream<Path> directoryStream = Files.newDirectoryStream(folder)) {
-      for (final Path region : directoryStream) {
-        if (IS_OUTER_REGION.test(region)) {
-          try {
-            Files.delete(region);
-          } catch (final IOException exception) {
-            exception.printStackTrace();
-          }
+    try (final Stream<Path> stream = Files.walk(folder)) {
+      stream.filter(IS_OUTER_REGION).forEach(region -> {
+        try {
+          Files.delete(region);
+        } catch (final IOException exception) {
+          exception.printStackTrace();
         }
-      }
+      });
     } catch (final IOException exception) {
       exception.printStackTrace();
     }

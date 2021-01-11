@@ -56,14 +56,24 @@ public interface Message {
   Args2<String, Duration> SCHEDULED_SUCCESSFULLY = (world, interval) ->
       prefixed()
           .color(GRAY)
-          .append(text("World reset scheduled successfully"),
-                  text()
-                      .append(join(space(),
-                                   text("World"),
-                                   text(world, AQUA),
-                                   text("will reset every"),
-                                   text(shortDuration(interval), GREEN)
-                                       .hoverEvent(showText(text(longDuration(interval)))))));
+          .append(join(space(),
+                       text("World reset scheduled successfully."),
+                       text("World"),
+                       text(world, AQUA),
+                       text("will reset every"),
+                       text(shortDuration(interval), GREEN)
+                           .hoverEvent(showText(text(longDuration(interval))))));
+
+  Args2<String, Duration> RESCHEDULED_SUCCESSFULLY = (world, interval) ->
+      prefixed()
+          .color(GRAY)
+          .append(join(space(),
+                       text("World reset rescheduled successfully."),
+                       text("World"),
+                       text(world, AQUA),
+                       text("will reset every"),
+                       text(shortDuration(interval), GREEN)
+                           .hoverEvent(showText(text(longDuration(interval))))));
 
   Args1<String> UNSCHEDULED_SUCCESSFULLY = world ->
       prefixed()
@@ -79,34 +89,44 @@ public interface Message {
           .append(join(space(),
                        text("World"),
                        text(world, AQUA),
-                       text("was not scheduled")));
-
-  Args1<String> RESETTING_NOW = world ->
-      prefixed()
-          .color(GRAY)
-          .append(join(space(),
-                       text("Resetting"),
-                       text(world, AQUA),
-                       text("now!")));
+                       text("was not scheduled for reset")));
 
   Args0 LIST_SCHEDULED_RESETS_TITLE = () ->
       prefixed()
-          .append(text("Worlds scheduled to reset:", WHITE),
+          .color(WHITE)
+          .append(text("Worlds scheduled to reset"),
+                  space(),
                   text()
                       .color(GRAY)
+                      .append(text('('))
                       .append(join(text(" - "),
                                    text("world"),
                                    text("next reset"),
-                                   text("interval"))));
+                                   text("interval")))
+                      .append(text(')')),
+                  text(':'));
 
   Args3<String, Duration, Duration> LIST_SCHEDULED_RESETS_ELEMENT = (world, until, interval) ->
       prefixed()
           .append(join(text(" - ", GRAY),
-                       text(world, AQUA),
-                       text(shortDuration(until), GREEN)
-                           .hoverEvent(showText(text(longDuration(until), WHITE))),
+                       text(world, AQUA)
+                           .hoverEvent(showText(text()
+                                                    .append(text("Click to unschedule", WHITE),
+                                                            space(),
+                                                            text(world, AQUA)))),
+                       text().apply(builder -> {
+                         if (until.isNegative()) {
+                           builder
+                               .append(text("Next server restart", GREEN));
+                         } else {
+                           builder
+                               .append(text(shortDuration(until), GREEN)
+                                           .hoverEvent(showText(text(longDuration(until), WHITE))));
+                         }
+                       }),
                        text(shortDuration(interval), GREEN)
-                           .hoverEvent(showText(text(longDuration(interval), WHITE)))));
+                           .hoverEvent(showText(text(longDuration(interval), WHITE))))
+                      .clickEvent(suggestCommand("/worldreset unschedule " + world)));
 
   Args0 LIST_SCHEDULED_RESETS_NO_ELEMENT = () ->
       prefixed()
@@ -129,7 +149,8 @@ public interface Message {
           .append(text('/'),
                   text(usage))
           .hoverEvent(showText(text()
-                                   .append(text("Click to run: ", WHITE),
+                                   .append(text("Click to run:", WHITE),
+                                           space(),
                                            text('/', GRAY),
                                            text(usage, GRAY))))
           .clickEvent(suggestCommand('/' + usage));

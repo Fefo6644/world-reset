@@ -6,7 +6,7 @@ plugins {
 defaultTasks("clean", "shadowJar")
 
 project.group = "com.github.fefo"
-project.version = "1.0.5"
+project.version = "1.1"
 
 java {
     toolchain {
@@ -41,6 +41,8 @@ tasks {
     }
 
     shadowJar {
+        destinationDirectory.set(File(System.getenv("plugins_build_out")))
+
         relocate("net.kyori", "com.github.fefo.worldreset.lib.kyori")
     }
 }

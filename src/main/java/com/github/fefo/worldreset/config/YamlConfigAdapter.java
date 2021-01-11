@@ -26,7 +26,6 @@ public final class YamlConfigAdapter {
   private static final Set<ConfigKey<?>> CONFIG_KEYS =
       ImmutableSet.of(ConfigKeys.DEFAULT_RESET_INTERVAL,
                       ConfigKeys.BROADCAST_MESSAGE,
-                      ConfigKeys.KICK_MESSAGE,
                       ConfigKeys.BROADCAST_PRIOR_RESET);
 
   static {
