@@ -6,15 +6,26 @@ import com.github.fefo.worldreset.messages.SubjectFactory;
 import com.github.fefo.worldreset.work.WorldsDataHandler;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.file.Path;
 
 public final class WorldResetPlugin extends JavaPlugin {
 
+  public static final Logger LOGGER = LoggerFactory.getLogger(WorldResetPlugin.class);
+
+  private final Path pluginDataFolder = getDataFolder().toPath();
   private final YamlConfigAdapter configAdapter = new YamlConfigAdapter(this);
   private WorldsDataHandler worldsDataHandler;
   private SubjectFactory subjectFactory;
   private WorldResetCommand worldResetCommand;
+
+  public Path getPluginDataFolder() {
+    return this.pluginDataFolder;
+  }
 
   public SubjectFactory getSubjectFactory() {
     return this.subjectFactory;
@@ -50,12 +61,6 @@ public final class WorldResetPlugin extends JavaPlugin {
     }
 
     this.worldResetCommand = new WorldResetCommand(this);
-    try {
-      Class.forName("com.destroystokyo.paper.event.server.AsyncTabCompleteEvent");
-      Bukkit.getPluginManager().registerEvents(this.worldResetCommand, this);
-    } catch (final ClassNotFoundException exception) {
-      // oh bummer :(
-    }
   }
 
   @Override
@@ -79,5 +84,10 @@ public final class WorldResetPlugin extends JavaPlugin {
     } catch (final IOException exception) {
       exception.printStackTrace();
     }
+  }
+
+  @Override
+  public @NotNull Logger getSLF4JLogger() {
+    return LOGGER;
   }
 }

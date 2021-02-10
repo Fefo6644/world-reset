@@ -5,29 +5,31 @@ import com.github.fefo.worldreset.config.ConfigKeys;
 import com.github.fefo.worldreset.config.YamlConfigAdapter;
 import com.github.fefo.worldreset.messages.SubjectFactory;
 import com.github.fefo.worldreset.util.Utils;
-import com.google.common.collect.Iterables;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import org.bukkit.Bukkit;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.Reader;
 import java.io.Writer;
 import java.lang.reflect.Type;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
+import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -38,69 +40,98 @@ import java.util.regex.MatchResult;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
+import static java.nio.file.StandardOpenOption.WRITE;
+
 public final class WorldsDataHandler {
 
-  private static final Gson GSON = new Gson();
-  private static final Type SCHEDULED_RESET_MAP_TYPE =
-      TypeToken.getParameterized(Map.class, String.class, ScheduledReset.class).getType();
+  @Deprecated(forRemoval = true, since = "1.2")
+  private static final Type SCHEDULED_RESET_MAP_TYPE = TypeToken.getParameterized(Map.class, String.class, ScheduledReset.class).getType();
+  private static final Type SCHEDULED_RESET_SET_TYPE = TypeToken.getParameterized(Set.class, ScheduledReset.class).getType();
+  private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
+  private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
   private static final Path WORLDS_FOLDER = Bukkit.getWorldContainer().toPath();
 
   private static final PathMatcher REGION_FILE_MATCHER =
       FileSystems.getDefault().getPathMatcher("regex:r(?:\\.-?\\d){2}\\.mca");
   private static final Predicate<Path> IS_INNER_REGION = path -> {
-    return path.endsWith("r.0.0.mca") || path.endsWith("r.0.-1.mca")
-           || path.endsWith("r.-1.0.mca") || path.endsWith("r.-1.-1.mca");
+    return path.endsWith("r.0.0.mca")
+           || path.endsWith("r.0.-1.mca")
+           || path.endsWith("r.-1.0.mca")
+           || path.endsWith("r.-1.-1.mca");
   };
   private static final Predicate<Path> IS_OUTER_REGION =
-      IS_INNER_REGION.negate().and(path -> REGION_FILE_MATCHER.matches(Iterables.getLast(path)));
+      IS_INNER_REGION.negate().and(path -> REGION_FILE_MATCHER.matches(path.getFileName()));
 
-  private final WorldResetPlugin plugin;
   private final SubjectFactory subjectFactory;
   private final YamlConfigAdapter configAdapter;
   private final Path worldsJson;
-
   private final Set<Duration> broadcastMoments = new HashSet<>();
-  private final Map<String, ScheduledReset> scheduledResets = new ConcurrentHashMap<>();
-
+  private final Set<ScheduledReset> scheduledResets = new HashSet<>();
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
-  private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
-      new ThreadFactoryBuilder().setPriority(Thread.NORM_PRIORITY)
-                                .setDaemon(false)
-                                .setNameFormat("worldreset-worker-pool-thread-%d")
-                                .build());
+  private final ScheduledExecutorService scheduler =
+      Executors.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder()
+                                                     .setPriority(Thread.NORM_PRIORITY)
+                                                     .setDaemon(false)
+                                                     .setNameFormat("worldreset-worker-pool-thread-%d")
+                                                     .build());
 
   public WorldsDataHandler(final WorldResetPlugin plugin) {
-    this.plugin = plugin;
     this.subjectFactory = plugin.getSubjectFactory();
     this.configAdapter = plugin.getConfigAdapter();
-    this.worldsJson = plugin.getDataFolder().toPath().resolve("worlds.json");
+    this.worldsJson = plugin.getPluginDataFolder().resolve("worlds.json");
   }
 
   public void load() throws IOException {
     if (Files.notExists(this.worldsJson)) {
-      try (final InputStream inputStream = this.plugin.getResource("worlds.json")) {
-        if (inputStream == null) {
-          throw new NullPointerException("data input stream is null");
-        }
-        Files.copy(inputStream, this.worldsJson);
+      Files.createFile(this.worldsJson);
+      try (final BufferedWriter writer = Files.newBufferedWriter(this.worldsJson, WRITE)) {
+        writer.write("[]");
+        writer.newLine();
       }
     }
 
-    try (final Reader reader = Files.newBufferedReader(this.worldsJson, StandardCharsets.UTF_8)) {
-      this.scheduledResets.putAll(GSON.fromJson(reader, SCHEDULED_RESET_MAP_TYPE));
+    JsonElement read;
+    try (final Reader reader = Files.newBufferedReader(this.worldsJson, UTF_8)) {
+      read = GSON.fromJson(reader, JsonElement.class);
+    } catch (final JsonParseException exception) {
+      final String message = String.format("There was an error reading %s, making backup and generating an empty JSON file. "
+                                           + "Please send the faulty file to the plugin author!",
+                                           this.worldsJson.toString());
+      WorldResetPlugin.LOGGER.warn(message, exception);
+
+      final String backup = String.format("world.%s.err.json", DATE_TIME_FORMATTER.format(Instant.now()));
+      Files.move(this.worldsJson, this.worldsJson.resolveSibling(backup));
+      Files.createFile(this.worldsJson);
+      try (final BufferedWriter writer = Files.newBufferedWriter(this.worldsJson, WRITE)) {
+        writer.write("[]");
+        writer.newLine();
+      }
+
+      read = new JsonObject();
     }
 
-    this.broadcastMoments.addAll(this.configAdapter.get(ConfigKeys.BROADCAST_PRIOR_RESET)
-                                                   .parallelStream()
+    final Set<ScheduledReset> set;
+    if (read.isJsonObject()) {
+      final Map<String, ScheduledReset> map = GSON.fromJson(read, SCHEDULED_RESET_MAP_TYPE);
+      set = new HashSet<>(map != null ? map.values() : ImmutableSet.of());
+    } else if (read.isJsonArray()) {
+      set = GSON.fromJson(read, SCHEDULED_RESET_SET_TYPE);
+    } else {
+      set = null;
+    }
+    this.scheduledResets.addAll(set != null ? set : ImmutableSet.of());
+
+    this.broadcastMoments.addAll(this.configAdapter.get(ConfigKeys.BROADCAST_PRIOR_RESET).stream()
                                                    .map(Utils::parseDuration)
                                                    .collect(Collectors.toSet()));
-    this.scheduler.scheduleAtFixedRate(this::auditResets, 5L, 5L, TimeUnit.SECONDS);
+    this.scheduler.scheduleWithFixedDelay(this::auditResets, 5L, 5L, TimeUnit.SECONDS);
   }
 
   public void deleteAny() {
     final Instant now = Instant.now();
-    getScheduledResets().values().parallelStream()
-                        .filter(ScheduledReset::auditReset).forEach(reset -> {
+    getScheduledResets().stream().filter(ScheduledReset::auditReset).forEach(reset -> {
       deleteRegionsRecursively(WORLDS_FOLDER.resolve(reset.getWorldName()));
 
       Instant nextResetFrom = reset.getNextReset();
@@ -108,15 +139,13 @@ public final class WorldsDataHandler {
         nextResetFrom = nextResetFrom.plus(reset.getInterval());
       }
 
-      this.scheduledResets.put(reset.getWorldName(),
-                               new ScheduledReset(reset.getInterval(), nextResetFrom,
-                                                  reset.getWorldName()));
+      this.scheduledResets.add(new ScheduledReset(reset.getInterval(), nextResetFrom, reset.getWorldName()));
     });
   }
 
   public void save() throws IOException {
-    try (final Writer writer = Files.newBufferedWriter(this.worldsJson, StandardCharsets.UTF_8)) {
-      GSON.toJson(this.scheduledResets, SCHEDULED_RESET_MAP_TYPE, writer);
+    try (final Writer writer = Files.newBufferedWriter(this.worldsJson, WRITE, TRUNCATE_EXISTING)) {
+      GSON.toJson(this.scheduledResets, SCHEDULED_RESET_SET_TYPE, writer);
     }
   }
 
@@ -132,19 +161,18 @@ public final class WorldsDataHandler {
     }
   }
 
-  public Map<String, ScheduledReset> getScheduledResets() {
-    return new HashMap<>(this.scheduledResets);
+  public Set<ScheduledReset> getScheduledResets() {
+    return new HashSet<>(this.scheduledResets);
   }
 
   public WorldOperationResult schedule(final String worldName, final Duration interval) {
-    final ScheduledReset previous =
-        this.scheduledResets.put(worldName, new ScheduledReset(interval, worldName));
-    return previous == null ? WorldOperationResult.SUCCESS_OTHER
-                            : WorldOperationResult.SUCCESS_RESCHEDULED;
+    final boolean removed = this.scheduledResets.removeIf(reset -> reset.getWorldName().equalsIgnoreCase(worldName));
+    this.scheduledResets.add(new ScheduledReset(interval, worldName));
+    return removed ? WorldOperationResult.SUCCESS_OTHER : WorldOperationResult.SUCCESS_RESCHEDULED;
   }
 
-  public ScheduledReset unschedule(final String worldName) {
-    return this.scheduledResets.remove(worldName);
+  public boolean unschedule(final String worldName) {
+    return this.scheduledResets.removeIf(reset -> reset.getWorldName().equalsIgnoreCase(worldName));
   }
 
   public void auditResets() {
@@ -152,7 +180,7 @@ public final class WorldsDataHandler {
       return;
     }
 
-    for (final ScheduledReset scheduledReset : getScheduledResets().values()) {
+    for (final ScheduledReset scheduledReset : getScheduledResets()) {
       if (scheduledReset.auditReset()) {
         continue;
       }

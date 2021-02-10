@@ -7,6 +7,7 @@ import net.kyori.adventure.text.TextComponent;
 import org.bukkit.plugin.Plugin;
 
 import java.time.Duration;
+import java.util.stream.Collectors;
 
 import static com.github.fefo.worldreset.util.Utils.longDuration;
 import static com.github.fefo.worldreset.util.Utils.shortDuration;
@@ -40,7 +41,12 @@ public interface Message {
           .color(YELLOW)
           .append(text("WorldReset", GOLD),
                   space(),
-                  text("by Fefo"),
+                  text("by"),
+                  space(),
+                  text()
+                      .append(join(text(", "),
+                                   plugin.getDescription().getAuthors().stream()
+                                         .map(Component::text).collect(Collectors.toList()))),
                   text(" - ", GRAY),
                   text('v'),
                   text(plugin.getDescription().getVersion()));
@@ -49,9 +55,13 @@ public interface Message {
       prefixed()
           .append(text("You are not allowed to run this command", RED));
 
-  Args0 CONSOLE_INCOMPLETE_COMMAND = () ->
+  Args1<String> CONSOLE_INCOMPLETE_COMMAND = what ->
       prefixed()
-          .append(text("Please provide a world from console", RED));
+          .color(RED)
+          .append(join(space(),
+                       text("Please"),
+                       text(what),
+                       text("when running this command from console")));
 
   Args2<String, Duration> SCHEDULED_SUCCESSFULLY = (world, interval) ->
       prefixed()
@@ -98,12 +108,12 @@ public interface Message {
                   space(),
                   text()
                       .color(GRAY)
-                      .append(text('('))
-                      .append(join(text(" - "),
+                      .append(text('('),
+                              join(text(" - "),
                                    text("world"),
                                    text("next reset"),
-                                   text("interval")))
-                      .append(text(')')),
+                                   text("interval")),
+                              text(')')),
                   text(':'));
 
   Args3<String, Duration, Duration> LIST_SCHEDULED_RESETS_ELEMENT = (world, until, interval) ->
@@ -174,7 +184,7 @@ public interface Message {
   @FunctionalInterface
   interface Args0 {
 
-    default void sendMessage(final Audience audience) {
+    default void send(final Audience audience) {
       audience.sendMessage(build());
     }
 
@@ -188,7 +198,7 @@ public interface Message {
   @FunctionalInterface
   interface Args1<T> {
 
-    default void sendMessage(final Audience audience, final T t) {
+    default void send(final Audience audience, final T t) {
       audience.sendMessage(build(t));
     }
 
@@ -202,7 +212,7 @@ public interface Message {
   @FunctionalInterface
   interface Args2<T, S> {
 
-    default void sendMessage(final Audience audience, final T t, final S s) {
+    default void send(final Audience audience, final T t, final S s) {
       audience.sendMessage(build(t, s));
     }
 
@@ -216,7 +226,7 @@ public interface Message {
   @FunctionalInterface
   interface Args3<T, S, R> {
 
-    default void sendMessage(final Audience audience, final T t, final S s, final R r) {
+    default void send(final Audience audience, final T t, final S s, final R r) {
       audience.sendMessage(build(t, s, r));
     }
 
@@ -230,7 +240,7 @@ public interface Message {
   @FunctionalInterface
   interface Args4<T, S, R, Q> {
 
-    default void sendMessage(final Audience audience, final T t, final S s, final R r, final Q q) {
+    default void send(final Audience audience, final T t, final S s, final R r, final Q q) {
       audience.sendMessage(build(t, s, r, q));
     }
 
@@ -244,8 +254,7 @@ public interface Message {
   @FunctionalInterface
   interface Args5<T, S, R, Q, P> {
 
-    default void sendMessage(
-        final Audience audience, final T t, final S s, final R r, final Q q, final P p) {
+    default void send(final Audience audience, final T t, final S s, final R r, final Q q, final P p) {
       audience.sendMessage(build(t, s, r, q, p));
     }
 

@@ -16,12 +16,4 @@
       "default": "op"
     }
   },
-
-  "commands": {
-    "worldreset": {
-      "permission": "worldreset.command",
-      "description": "General administration command for world resetting",
-      "usage": "/worldreset help"
-    }
-  }
 }

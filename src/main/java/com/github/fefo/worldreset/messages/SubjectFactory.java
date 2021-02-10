@@ -4,17 +4,19 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import net.kyori.adventure.audience.Audience;
-import net.kyori.adventure.identity.Identity;
 import net.kyori.adventure.platform.bukkit.BukkitAudiences;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 public final class SubjectFactory {
+
+  private static final UUID ZERO = new UUID(0L, 0L);
 
   private final LoadingCache<CommandSender, MessagingSubject> subjectsCache =
       CacheBuilder.newBuilder()
@@ -22,7 +24,7 @@ public final class SubjectFactory {
                   .expireAfterWrite(5, TimeUnit.MINUTES)
                   .expireAfterAccess(5, TimeUnit.MINUTES)
                   .build(CacheLoader.from(sender -> {
-                    return new MessagingSubject(identityFrom(sender), audienceFrom(sender),
+                    return new MessagingSubject(uuidFrom(sender), audienceFrom(sender),
                                                 nameFrom(sender), sender::hasPermission,
                                                 worldSupplierFrom(sender));
                   }));
@@ -51,11 +53,11 @@ public final class SubjectFactory {
     return this.audiences.sender(sender);
   }
 
-  private Identity identityFrom(final CommandSender sender) {
+  private UUID uuidFrom(final CommandSender sender) {
     if (!(sender instanceof Player)) {
-      return Identity.nil();
+      return ZERO;
     }
-    return Identity.identity(((Player) sender).getUniqueId());
+    return ((Player) sender).getUniqueId();
   }
 
   private String nameFrom(final CommandSender sender) {

@@ -1,5 +1,6 @@
 package com.github.fefo.worldreset.config;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang.Validate;
 import org.bukkit.plugin.Plugin;
@@ -80,7 +81,8 @@ public final class YamlConfigAdapter {
 
   private void reload(final boolean force) throws IOException {
     try (final Reader reader = Files.newBufferedReader(this.configFile)) {
-      this.rootRaw.putAll(YAML.loadAs(reader, Map.class));
+      final Object read = YAML.load(reader);
+      this.rootRaw.putAll(read instanceof Map ? (Map<String, ?>) read : ImmutableMap.of());
       CONFIG_KEYS.forEach(configKey -> {
         if (configKey.isReloadable() || force) {
           this.unwind.put(configKey.getKey(), configKey.get(this));
