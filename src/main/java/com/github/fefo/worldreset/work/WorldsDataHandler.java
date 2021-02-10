@@ -46,7 +46,7 @@ import static java.nio.file.StandardOpenOption.WRITE;
 
 public final class WorldsDataHandler {
 
-  @Deprecated(forRemoval = true, since = "1.2")
+  @Deprecated
   private static final Type SCHEDULED_RESET_MAP_TYPE = TypeToken.getParameterized(Map.class, String.class, ScheduledReset.class).getType();
   private static final Type SCHEDULED_RESET_SET_TYPE = TypeToken.getParameterized(Set.class, ScheduledReset.class).getType();
   private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
