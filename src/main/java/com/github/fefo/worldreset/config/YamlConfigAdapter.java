@@ -51,7 +51,7 @@ public final class YamlConfigAdapter {
   private final Path dataFolder;
   private final Path configFile;
   private final String separator = ".";
-  private final String separatorPattern = Pattern.quote(this.separator);
+  private final Pattern separatorPattern = Pattern.compile(this.separator, Pattern.LITERAL);
   private final Map<String, Object> rootRaw = new LinkedHashMap<>();
   private final Map<String, Object> unwind = new LinkedHashMap<>(CONFIG_KEYS.size());
 
@@ -139,7 +139,7 @@ public final class YamlConfigAdapter {
   }
 
   private Object get(final String path, final Map<? super String, ?> map) {
-    final String[] pathComponents = path.split(this.separatorPattern);
+    final String[] pathComponents = this.separatorPattern.split(path);
 
     if (pathComponents.length == 1) {
       return map.get(path);

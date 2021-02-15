@@ -4,7 +4,6 @@ import com.github.fefo.worldreset.commands.WorldResetCommand;
 import com.github.fefo.worldreset.config.YamlConfigAdapter;
 import com.github.fefo.worldreset.messages.SubjectFactory;
 import com.github.fefo.worldreset.work.WorldsDataHandler;
-import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
