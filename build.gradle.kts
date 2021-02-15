@@ -1,9 +1,10 @@
 plugins {
     `java-library`
     id("com.github.johnrengelman.shadow") version "6.1.0"
+    id("com.github.hierynomus.license-base") version "0.15.0"
 }
 
-defaultTasks("clean", "shadowJar")
+defaultTasks("clean", "licenseMain", "shadowJar")
 
 project.group = "com.github.fefo"
 project.version = "1.2"
@@ -44,6 +45,19 @@ tasks {
         relocate("net.kyori", "com.github.fefo.worldreset.lib.kyori")
         relocate("me.lucko.commodore", "com.github.fefo.worldreset.lib.commodore")
     }
+}
+
+license {
+    header = rootProject.file("license-header.txt")
+    encoding = "UTF-8"
+
+    mapping("java", "DOUBLESLASH_STYLE")
+
+    ext["year"] = 2021
+    ext["name"] = "Fefo6644"
+    ext["email"] = "federico.lopez.1999@outlook.com"
+
+    include("**/*.java")
 }
 
 repositories {
