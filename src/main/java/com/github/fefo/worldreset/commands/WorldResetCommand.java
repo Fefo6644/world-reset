@@ -101,7 +101,7 @@ public final class WorldResetCommand extends Command implements Listener {
 
     setPermission("worldreset.command");
     setPermissionMessage(Message.NO_PERMISSION.legacy());
-    CommandMapHelper.getCommandMap().register(plugin.getName(), this);
+    Bukkit.getCommandMap().register(plugin.getName(), this);
     try {
       Class.forName("com.destroystokyo.paper.event.server.AsyncTabCompleteEvent");
       Bukkit.getPluginManager().registerEvents(this, plugin);
@@ -286,7 +286,7 @@ public final class WorldResetCommand extends Command implements Listener {
   public boolean execute(final @NotNull CommandSender sender,
                          final @NotNull String alias,
                          final @NotNull String @NotNull [] args) {
-    this.asyncExecutor.submit(() -> {
+    this.asyncExecutor.execute(() -> {
       final String input = getName() + ' ' + String.join(" ", args);
       final MessagingSubject subject = this.subjectFactory.from(sender);
       final ParseResults<MessagingSubject> results = this.dispatcher.parse(input.trim(), subject);

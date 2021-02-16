@@ -25,6 +25,8 @@
 package com.github.fefo.worldreset.commands;
 
 import com.github.fefo.worldreset.util.Utils;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.mojang.brigadier.LiteralMessage;
 import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.arguments.ArgumentType;
@@ -37,11 +39,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -61,8 +59,7 @@ public final class DurationArgumentType implements ArgumentType<Duration> {
       new Dynamic2CommandExceptionType((found, max) -> {
         return new LiteralMessage("Duration must not be more than " + max + ", found " + found);
       });
-  private static final Collection<String> EXAMPLES =
-      Collections.unmodifiableList(Arrays.asList("12d", "25mins", "8.5ys", "3mo5ws2days4.045secs"));
+  private static final Collection<String> EXAMPLES = ImmutableList.of("12d", "25mins", "8.5ys", "3mo5ws2days4.045secs");
   private static final Pattern DURATION_PATTERN =
       Pattern.compile("^" +
                       "(?:(\\d+(?:\\.\\d+)?)(y)(?:ear)?s?)?" +
@@ -78,17 +75,17 @@ public final class DurationArgumentType implements ArgumentType<Duration> {
     // Use a LinkedHashMap so they retain the order they were put into
     // That same order will be the one in which suggestions will appear
     // See #listSuggestions comments for a brief example
-    final Map<String, ChronoUnit> tempMap = new LinkedHashMap<>(7);
-    tempMap.put("y", ChronoUnit.YEARS);
-    tempMap.put("mo", ChronoUnit.MONTHS);
-    tempMap.put("w", ChronoUnit.WEEKS);
-    tempMap.put("d", ChronoUnit.DAYS);
-    tempMap.put("h", ChronoUnit.HOURS);
-    tempMap.put("m", ChronoUnit.MINUTES);
-    tempMap.put("s", ChronoUnit.SECONDS);
+    final ImmutableMap.Builder<String, ChronoUnit> builder = ImmutableMap.builder();
+    builder.put("y", ChronoUnit.YEARS)
+           .put("mo", ChronoUnit.MONTHS)
+           .put("w", ChronoUnit.WEEKS)
+           .put("d", ChronoUnit.DAYS)
+           .put("h", ChronoUnit.HOURS)
+           .put("m", ChronoUnit.MINUTES)
+           .put("s", ChronoUnit.SECONDS);
 
-    SCALES = Collections.unmodifiableMap(tempMap);
-    SCALES_SUGGESTIONS = Collections.unmodifiableList(new ArrayList<>(SCALES.keySet()));
+    SCALES = builder.build();
+    SCALES_SUGGESTIONS = ImmutableList.copyOf(SCALES.keySet());
     // This is where and why the order has to be retained
   }
 
