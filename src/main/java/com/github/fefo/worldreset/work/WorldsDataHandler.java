@@ -38,6 +38,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import org.bukkit.Bukkit;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -88,6 +89,7 @@ public final class WorldsDataHandler {
   private static final Predicate<Path> IS_OUTER_REGION =
       IS_INNER_REGION.negate().and(path -> REGION_FILE_MATCHER.matches(path.getFileName()));
 
+  private final JavaPlugin plugin;
   private final SubjectFactory subjectFactory;
   private final YamlConfigAdapter configAdapter;
   private final Path worldsJson;
@@ -102,6 +104,7 @@ public final class WorldsDataHandler {
                                                      .build());
 
   public WorldsDataHandler(final WorldResetPlugin plugin) {
+    this.plugin = plugin;
     this.subjectFactory = plugin.getSubjectFactory();
     this.configAdapter = plugin.getConfigAdapter();
     this.worldsJson = plugin.getPluginDataFolder().resolve("worlds.json");
@@ -123,7 +126,8 @@ public final class WorldsDataHandler {
       final String message = String.format("There was an error reading %s, making backup and generating an empty JSON file. "
                                            + "Please send the faulty file to the plugin author!",
                                            this.worldsJson.toString());
-      WorldResetPlugin.LOGGER.warn(message, exception);
+      this.plugin.getLogger().warning(message);
+      exception.printStackTrace();
 
       final String backup = String.format("world.%s.err.json", DATE_TIME_FORMATTER.format(Instant.now()));
       Files.move(this.worldsJson, this.worldsJson.resolveSibling(backup));

@@ -31,6 +31,7 @@ import com.github.fefo.worldreset.config.YamlConfigAdapter;
 import com.github.fefo.worldreset.messages.Message;
 import com.github.fefo.worldreset.messages.MessagingSubject;
 import com.github.fefo.worldreset.messages.SubjectFactory;
+import com.github.fefo.worldreset.util.CommandMapHelper;
 import com.github.fefo.worldreset.work.ScheduledReset;
 import com.github.fefo.worldreset.work.WorldsDataHandler;
 import com.google.common.collect.ImmutableList;
@@ -101,12 +102,13 @@ public final class WorldResetCommand extends Command implements Listener {
 
     setPermission("worldreset.command");
     setPermissionMessage(Message.NO_PERMISSION.legacy());
-    Bukkit.getCommandMap().register(plugin.getName(), this);
+    CommandMapHelper.getCommandMap().register(plugin.getName(), this);
+
     try {
       Class.forName("com.destroystokyo.paper.event.server.AsyncTabCompleteEvent");
       Bukkit.getPluginManager().registerEvents(this, plugin);
     } catch (final ClassNotFoundException exception) {
-      // oh bummer :(
+      // ignore
     }
 
     final LiteralArgumentBuilder<MessagingSubject> builder = literal(getName());
@@ -266,8 +268,7 @@ public final class WorldResetCommand extends Command implements Listener {
     return builder.buildFuture();
   }
 
-  private CompletableFuture<Suggestions> suggestWorlds(
-      final CommandContext<MessagingSubject> context, final SuggestionsBuilder builder) {
+  private CompletableFuture<Suggestions> suggestWorlds(final CommandContext<MessagingSubject> context, final SuggestionsBuilder builder) {
     final String current = builder.getRemaining().toLowerCase(Locale.ROOT);
     Bukkit.getWorlds().stream().map(World::getName).filter(world -> {
       return world.toLowerCase(Locale.ROOT).startsWith(current);

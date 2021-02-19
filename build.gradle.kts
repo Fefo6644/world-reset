@@ -7,7 +7,7 @@ plugins {
 defaultTasks("clean", "licenseMain", "shadowJar")
 
 project.group = "com.github.fefo"
-project.version = "1.2.1"
+project.version = "1.2.2"
 
 java {
     toolchain {
@@ -67,7 +67,7 @@ repositories {
 }
 
 dependencies {
-    implementation("net.kyori:adventure-api:4.4.0") {
+    implementation("net.kyori:adventure-api:4.5.0") {
         exclude(group = "org.checkerframework")
     }
     implementation("net.kyori:adventure-platform-bukkit:4.0.0-SNAPSHOT") {
