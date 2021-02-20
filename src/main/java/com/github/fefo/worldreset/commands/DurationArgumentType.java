@@ -26,7 +26,6 @@ package com.github.fefo.worldreset.commands;
 
 import com.github.fefo.worldreset.util.Utils;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.mojang.brigadier.LiteralMessage;
 import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.arguments.ArgumentType;
@@ -40,6 +39,8 @@ import org.jetbrains.annotations.Nullable;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -75,16 +76,16 @@ public final class DurationArgumentType implements ArgumentType<Duration> {
     // Use a LinkedHashMap so they retain the order they were put into
     // That same order will be the one in which suggestions will appear
     // See #listSuggestions comments for a brief example
-    final ImmutableMap.Builder<String, ChronoUnit> builder = ImmutableMap.builder();
-    builder.put("y", ChronoUnit.YEARS)
-           .put("mo", ChronoUnit.MONTHS)
-           .put("w", ChronoUnit.WEEKS)
-           .put("d", ChronoUnit.DAYS)
-           .put("h", ChronoUnit.HOURS)
-           .put("m", ChronoUnit.MINUTES)
-           .put("s", ChronoUnit.SECONDS);
+    final Map<String, ChronoUnit> builder = new LinkedHashMap<>(7);
+    builder.put("y", ChronoUnit.YEARS);
+    builder.put("mo", ChronoUnit.MONTHS);
+    builder.put("w", ChronoUnit.WEEKS);
+    builder.put("d", ChronoUnit.DAYS);
+    builder.put("h", ChronoUnit.HOURS);
+    builder.put("m", ChronoUnit.MINUTES);
+    builder.put("s", ChronoUnit.SECONDS);
 
-    SCALES = builder.build();
+    SCALES = Collections.unmodifiableMap(builder);
     SCALES_SUGGESTIONS = ImmutableList.copyOf(SCALES.keySet());
     // This is where and why the order has to be retained
   }
