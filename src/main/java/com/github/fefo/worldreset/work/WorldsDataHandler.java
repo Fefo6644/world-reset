@@ -51,7 +51,6 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -74,17 +73,13 @@ public final class WorldsDataHandler {
   @Deprecated
   private static final Type SCHEDULED_RESET_MAP_TYPE = TypeToken.getParameterized(Map.class, String.class, ScheduledReset.class).getType();
   private static final Type SCHEDULED_RESET_SET_TYPE = TypeToken.getParameterized(Set.class, ScheduledReset.class).getType();
-  private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
   private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
   private static final Path WORLDS_FOLDER = Bukkit.getWorldContainer().toPath();
 
   private static final PathMatcher REGION_FILE_MATCHER =
       FileSystems.getDefault().getPathMatcher("regex:r(?:\\.-?\\d){2}\\.mca");
   private static final Predicate<Path> IS_INNER_REGION = path -> {
-    return path.endsWith("r.0.0.mca")
-           || path.endsWith("r.0.-1.mca")
-           || path.endsWith("r.-1.0.mca")
-           || path.endsWith("r.-1.-1.mca");
+    return path.endsWith("r.0.0.mca") || path.endsWith("r.0.-1.mca") || path.endsWith("r.-1.0.mca") || path.endsWith("r.-1.-1.mca");
   };
   private static final Predicate<Path> IS_OUTER_REGION =
       IS_INNER_REGION.negate().and(path -> REGION_FILE_MATCHER.matches(path.getFileName()));
@@ -129,7 +124,7 @@ public final class WorldsDataHandler {
       this.plugin.getLogger().warning(message);
       exception.printStackTrace();
 
-      final String backup = String.format("world.%s.err.json", DATE_TIME_FORMATTER.format(Instant.now()));
+      final String backup = String.format("world.%s.err.json", System.currentTimeMillis());
       Files.move(this.worldsJson, this.worldsJson.resolveSibling(backup));
       Files.createFile(this.worldsJson);
       try (final BufferedWriter writer = Files.newBufferedWriter(this.worldsJson, WRITE)) {
