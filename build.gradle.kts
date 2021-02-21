@@ -43,7 +43,6 @@ tasks {
 
     shadowJar {
         relocate("net.kyori", "com.github.fefo.worldreset.lib.kyori")
-        relocate("me.lucko.commodore", "com.github.fefo.worldreset.lib.commodore")
     }
 }
 
