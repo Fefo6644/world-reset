@@ -47,7 +47,7 @@ tasks {
 }
 
 license {
-    header = rootProject.file("license-header.txt")
+    header = rootProject.file("header.txt")
     encoding = "UTF-8"
 
     mapping("java", "DOUBLESLASH_STYLE")

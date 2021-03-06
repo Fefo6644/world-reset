@@ -71,18 +71,16 @@ import static java.nio.file.StandardOpenOption.WRITE;
 public final class WorldsDataHandler {
 
   @Deprecated
-  private static final Type SCHEDULED_RESET_MAP_TYPE = TypeToken.getParameterized(Map.class, String.class, ScheduledReset.class).getType();
-  private static final Type SCHEDULED_RESET_SET_TYPE = TypeToken.getParameterized(Set.class, ScheduledReset.class).getType();
+  private static final Type SCHEDULED_RESET_MAP_TYPE = new TypeToken<Map<String, ScheduledReset>>() { }.getType();
+  private static final Type SCHEDULED_RESET_SET_TYPE = new TypeToken<Set<ScheduledReset>>() { }.getType();
   private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
   private static final Path WORLDS_FOLDER = Bukkit.getWorldContainer().toPath();
 
-  private static final PathMatcher REGION_FILE_MATCHER =
-      FileSystems.getDefault().getPathMatcher("regex:r(?:\\.-?\\d){2}\\.mca");
+  private static final PathMatcher REGION_FILE_MATCHER = FileSystems.getDefault().getPathMatcher("regex:r(?:\\.-?\\d){2}\\.mca");
   private static final Predicate<Path> IS_INNER_REGION = path -> {
     return path.endsWith("r.0.0.mca") || path.endsWith("r.0.-1.mca") || path.endsWith("r.-1.0.mca") || path.endsWith("r.-1.-1.mca");
   };
-  private static final Predicate<Path> IS_OUTER_REGION =
-      IS_INNER_REGION.negate().and(path -> REGION_FILE_MATCHER.matches(path.getFileName()));
+  private static final Predicate<Path> IS_OUTER_REGION = IS_INNER_REGION.negate().and(path -> REGION_FILE_MATCHER.matches(path.getFileName()));
 
   private final JavaPlugin plugin;
   private final SubjectFactory subjectFactory;
@@ -146,7 +144,8 @@ public final class WorldsDataHandler {
     }
     this.scheduledResets.addAll(set != null ? set : ImmutableSet.of());
 
-    this.broadcastMoments.addAll(this.configAdapter.get(ConfigKeys.BROADCAST_PRIOR_RESET).stream()
+    this.broadcastMoments.addAll(this.configAdapter.get(ConfigKeys.BROADCAST_PRIOR_RESET)
+                                                   .stream()
                                                    .map(Utils::parseDuration)
                                                    .collect(Collectors.toSet()));
     this.scheduler.scheduleWithFixedDelay(this::auditResets, 5L, 5L, TimeUnit.SECONDS);
